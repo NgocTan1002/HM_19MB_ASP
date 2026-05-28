@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="HM_19MB_Agent/HM_19MB_Agent.csproj" />
+  <Project Path="HM_19MB_API/HM_19MB_API.csproj" />
+  <Project Path="HM_19MB_Core/HM_19MB_Core.csproj" />
+</Solution>
