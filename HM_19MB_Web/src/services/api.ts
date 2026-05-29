@@ -1,0 +1,78 @@
+// src/services/api.ts
+import axios from 'axios';
+import type{
+    SessionMetadata,
+    MeasurementRecord,
+    CalibrationResultRow,
+    UncertaintyInput,
+    UncertaintyResult,
+} from '../types/models';
+
+const BASE = import.meta.env.VITE_API_URL || 'http://localhost:5135';
+
+const client = axios.create({
+    baseURL: BASE,
+    headers: { 'Content-Type': 'application/json' },
+});
+
+client.interceptors.response.use(
+    res => res,
+    err => {
+        console.error('[API Error]', err.response?.status, err.config?.url);
+        return Promise.reject(err);
+    }
+);
+
+export const sessionApi = {
+    getById: (id: number) =>
+        client.get<SessionMetadata>(`/api/sessions/${id}`),
+
+    create: (meta: SessionMetadata) =>
+        client.post<{ id: number }>('/api/sessions', meta),
+
+    update: (id: number, meta: SessionMetadata) =>
+        client.put(`/api/sessions/${id}`, meta),
+};
+
+export const measurementApi = {
+    getBySession: (sessionId: number) =>
+        client.get<MeasurementRecord[]>(
+            `/api/sessions/${sessionId}/measurements`
+        ),
+};
+
+export const calibrationApi = {
+    calculate: (sessionId: number, input: UncertaintyInput) =>
+        client.post<UncertaintyResult>(
+            `/api/sessions/${sessionId}/calibration/calculate`,
+            input
+        ),
+
+    save: (sessionId: number, row: CalibrationResultRow) =>
+        client.post<{ id: number }>(
+            `/api/sessions/${sessionId}/calibration/results`,
+            row
+        ),
+
+    getBySession: (sessionId: number) =>
+        client.get<CalibrationResultRow[]>(
+            `/api/sessions/${sessionId}/calibration/results`
+        ),
+};
+
+export const reportApi = {
+    exportExcel: (sessionId: number, kenhCount = 3) =>
+        client.get(`/api/sessions/${sessionId}/reports/excel`, {
+            params: { kenhCount },
+            responseType: 'blob',
+        }),
+};
+
+export function downloadBlob(blob: Blob, filename: string) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+}
