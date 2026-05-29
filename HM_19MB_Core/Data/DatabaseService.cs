@@ -23,6 +23,20 @@ namespace HM_19MB_Core.Data
         public string DacTinhKyThuat { get; set; } = "";
         public string ThietBiChuan { get; set; } = "";
     }
+
+    public class PhienDoSummary
+    {
+        public int Id { get; set; }
+        public string TenThietBi { get; set; } = "";
+        public string KyHieu { get; set; } = "";
+        public string SoHieu { get; set; } = "";
+        public string DonViSuDung { get; set; } = "";
+        public DateTime NgayHieuChuan { get; set; }
+        public long SoDiemKiemTra { get; set; }
+        public long SoLanDoTho { get; set; }
+        public DateTime NgayTao { get; set; }
+    }
+
     public static partial class DatabaseService
     {
         private static string ConnectionString =>
@@ -169,6 +183,18 @@ namespace HM_19MB_Core.Data
         }
 
         // Lưu 1 block đo
+        public static async Task XoaPhienAsync(int phienId)
+        {
+            await using var conn = new NpgsqlConnection(ConnectionString);
+            await conn.OpenAsync();
+
+            await using var cmd = new NpgsqlCommand(
+                "SELECT fn_xoa_phien(@p_phien_id)", conn);
+            cmd.Parameters.AddWithValue("@p_phien_id", phienId);
+
+            await cmd.ExecuteNonQueryAsync();
+        }
+
         public static async Task<int> LuuKetQuaDoAsync(
             int phienId,
             MeasurementBlock block,
@@ -246,6 +272,36 @@ namespace HM_19MB_Core.Data
         }
 
         // Lấy kết quả đo của 1 phiên
+        public static async Task<List<PhienDoSummary>> LayDanhSachPhienAsync()
+        {
+            await using var conn = new NpgsqlConnection(ConnectionString);
+            await conn.OpenAsync();
+
+            await using var cmd = new NpgsqlCommand(
+                "SELECT * FROM fn_lay_danh_sach_phien()", conn);
+
+            var danhSach = new List<PhienDoSummary>();
+            await using var rdr = await cmd.ExecuteReaderAsync();
+
+            while (await rdr.ReadAsync())
+            {
+                danhSach.Add(new PhienDoSummary
+                {
+                    Id = rdr.GetInt32(0),
+                    TenThietBi = rdr.GetString(1),
+                    KyHieu = rdr.GetString(2),
+                    SoHieu = rdr.GetString(3),
+                    DonViSuDung = rdr.GetString(4),
+                    NgayHieuChuan = rdr.GetDateTime(5),
+                    SoDiemKiemTra = rdr.GetInt64(6),
+                    SoLanDoTho = rdr.GetInt64(7),
+                    NgayTao = rdr.GetDateTime(8),
+                });
+            }
+
+            return danhSach;
+        }
+
         public static async Task<List<KetQuaDo>> LayKetQuaTheoPhienAsync(int phienId)
         {
             await using var conn = new NpgsqlConnection(ConnectionString);

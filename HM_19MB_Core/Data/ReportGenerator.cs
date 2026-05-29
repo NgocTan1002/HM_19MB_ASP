@@ -1,4 +1,5 @@
 using HM_19MB_Core.Data;
+using MiniSoftware;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -103,6 +104,52 @@ namespace HM_19MB_Core.Data
             await writer.WriteLineAsync(
                 $"Thời gian kết thúc:,{ketQua.Last().ThoiGianDo:yyyy-MM-dd HH:mm:ss}");
 
+            return outputPath;
+        }
+
+        public static async Task<string> ExportToWordAsync(int phienId, string outputPath)
+        {
+            var meta = await DatabaseService.LayPhienAsync(phienId)
+                       ?? throw new InvalidOperationException("KhÃ´ng tÃ¬m tháº¥y phiÃªn hiá»‡u chuáº©n.");
+            var rows = await DatabaseService.LayKetQuaHieuChuanAsync(phienId);
+
+            if (rows.Count == 0)
+                throw new InvalidOperationException("ChÆ°a cÃ³ káº¿t quáº£ hiá»‡u chuáº©n Ä‘á»ƒ xuáº¥t bÃ¡o cÃ¡o.");
+
+            var templatePath = Path.Combine(
+                AppContext.BaseDirectory,
+                "Resources",
+                "Templates",
+                "GiayChungNhanHieuChuan.docx");
+
+            if (!File.Exists(templatePath))
+                throw new FileNotFoundException("KhÃ´ng tÃ¬m tháº¥y template Word.", templatePath);
+
+            var first = rows[0];
+            var data = new Dictionary<string, object?>
+            {
+                ["TenThietBi"] = meta.TenThietBi,
+                ["KyHieu"] = meta.KyHieu,
+                ["SoHieu"] = meta.SoHieu,
+                ["SoTem"] = meta.SoTem,
+                ["NoiSanXuat"] = meta.NoiSanXuat,
+                ["DonViSuDung"] = meta.DonViSuDung,
+                ["PhuongPhap"] = meta.PhuongPhap,
+                ["NgayHieuChuan"] = meta.NgayHieuChuan.ToString("dd/MM/yyyy"),
+                ["DacTinhKyThuat"] = meta.DacTinhKyThuat,
+                ["ThietBiChuan"] = meta.ThietBiChuan,
+                ["DieuKienMoiTruong"] = $"{meta.NhietDoMoiTruong}; {meta.DoAmTuongDoi}",
+                ["STT"] = first.STT,
+                ["GiaTriDat"] = FormatNullable(!double.IsNaN(first.GiaTriDat), first.GiaTriDat),
+                ["GiaTriChiThi"] = FormatNullable(!double.IsNaN(first.GiaTriChiThi), first.GiaTriChiThi),
+                ["TrungBinh"] = FormatNullable(!double.IsNaN(first.GiaTriTrungBinh), first.GiaTriTrungBinh),
+                ["SoHieuChinh"] = FormatNullable(!double.IsNaN(first.SoHieuChinh), first.SoHieuChinh),
+                ["DoOnDinh"] = FormatNullable(!double.IsNaN(first.DoOnDinh), first.DoOnDinh),
+                ["DoDongDeu"] = FormatNullable(!double.IsNaN(first.DoDongDeu), first.DoDongDeu),
+                ["DKDB"] = FormatNullable(!double.IsNaN(first.DoKhongDamBao), first.DoKhongDamBao),
+            };
+
+            await MiniWord.SaveAsByTemplateAsync(outputPath, templatePath, data);
             return outputPath;
         }
 

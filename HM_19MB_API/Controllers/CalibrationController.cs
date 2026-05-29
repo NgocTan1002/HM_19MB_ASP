@@ -36,5 +36,20 @@ namespace HM_19MB_API.Controllers
             var rows = await DatabaseService.LayKetQuaHieuChuanAsync(sessionId);
             return Ok(rows);
         }
+
+        [HttpDelete("results/{stt}")]
+        public async Task<IActionResult> DeleteResult(int sessionId, int stt)
+        {
+            await DatabaseService.XoaKetQuaHieuChuanAsync(sessionId, stt);
+            return NoContent();
+        }
+
+        [HttpGet("results/{id}/details")]
+        public async Task<IActionResult> GetDetails(int sessionId, int id)
+        {
+            _ = sessionId;
+            var details = await DatabaseService.LayChiTietLanDoAsync(id);
+            return Ok(details);
+        }
     }
 }

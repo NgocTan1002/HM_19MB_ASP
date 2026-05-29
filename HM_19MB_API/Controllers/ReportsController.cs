@@ -18,5 +18,17 @@ namespace HM_19MB_API.Controllers
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 $"BaoCao_{sessionId}.xlsx");
         }
+
+        [HttpGet("word")]
+        public async Task<IActionResult> Word(int sessionId)
+        {
+            var tempFile = Path.GetTempFileName() + ".docx";
+            await ReportGenerator.ExportToWordAsync(sessionId, tempFile);
+            var bytes = await System.IO.File.ReadAllBytesAsync(tempFile);
+            System.IO.File.Delete(tempFile);
+            return File(bytes,
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                $"BaoCao_{sessionId}.docx");
+        }
     }
 }

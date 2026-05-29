@@ -4,6 +4,8 @@ import type{
     SessionMetadata,
     MeasurementRecord,
     CalibrationResultRow,
+    ChiTietLanDo,
+    PhienDoSummary,
     UncertaintyInput,
     UncertaintyResult,
 } from '../types/models';
@@ -24,6 +26,9 @@ client.interceptors.response.use(
 );
 
 export const sessionApi = {
+    getList: () =>
+        client.get<PhienDoSummary[]>('/api/sessions'),
+
     getById: (id: number) =>
         client.get<SessionMetadata>(`/api/sessions/${id}`),
 
@@ -32,6 +37,9 @@ export const sessionApi = {
 
     update: (id: number, meta: SessionMetadata) =>
         client.put(`/api/sessions/${id}`, meta),
+
+    delete: (id: number) =>
+        client.delete(`/api/sessions/${id}`),
 };
 
 export const measurementApi = {
@@ -58,12 +66,27 @@ export const calibrationApi = {
         client.get<CalibrationResultRow[]>(
             `/api/sessions/${sessionId}/calibration/results`
         ),
+
+    delete: (sessionId: number, stt: number) =>
+        client.delete(
+            `/api/sessions/${sessionId}/calibration/results/${stt}`
+        ),
+
+    getChiTiet: (sessionId: number, ketQuaHcId: number) =>
+        client.get<ChiTietLanDo[]>(
+            `/api/sessions/${sessionId}/calibration/results/${ketQuaHcId}/details`
+        ),
 };
 
 export const reportApi = {
     exportExcel: (sessionId: number, kenhCount = 3) =>
         client.get(`/api/sessions/${sessionId}/reports/excel`, {
             params: { kenhCount },
+            responseType: 'blob',
+        }),
+
+    exportWord: (sessionId: number) =>
+        client.get(`/api/sessions/${sessionId}/reports/word`, {
             responseType: 'blob',
         }),
 };

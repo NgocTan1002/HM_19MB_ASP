@@ -7,6 +7,14 @@ namespace HM_19MB_API.Controllers
     [Route("api/[controller]")]
     public class SessionsController : ControllerBase
     {
+        [HttpGet]
+        public async Task<IActionResult> GetList()
+        {
+            await DatabaseService.EnsureSchemaAsync();
+            var sessions = await DatabaseService.LayDanhSachPhienAsync();
+            return Ok(sessions);
+        }
+
         [HttpPost]
         public async Task<IActionResult> Create([FromBody] SessionMetadata meta)
         {
@@ -27,6 +35,13 @@ namespace HM_19MB_API.Controllers
         public async Task<IActionResult> Update(int id, [FromBody] SessionMetadata meta)
         {
             await DatabaseService.CapNhatPhienAsync(id, meta);
+            return NoContent();
+        }
+
+        [HttpDelete("{id}")]
+        public async Task<IActionResult> Delete(int id)
+        {
+            await DatabaseService.XoaPhienAsync(id);
             return NoContent();
         }
     }
