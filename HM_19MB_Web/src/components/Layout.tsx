@@ -7,7 +7,7 @@ import { Grid, Layout as AntLayout, Menu, Typography } from 'antd';
 import type { MenuProps } from 'antd';
 import { useMemo, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { useSession } from '../contexts/SessionContext';
+import { useSession } from '../contexts/useSession';
 import SessionSelector from './SessionSelector';
 
 const { Header, Content, Sider } = AntLayout;

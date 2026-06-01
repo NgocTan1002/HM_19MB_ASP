@@ -1,18 +1,10 @@
 import {
-  createContext,
   useCallback,
-  useContext,
   useMemo,
   useState,
   type ReactNode,
 } from 'react';
-
-interface SessionContextValue {
-  currentSessionId: number | null;
-  setCurrentSessionId: (sessionId: number | null) => void;
-}
-
-const SessionContext = createContext<SessionContextValue | undefined>(undefined);
+import { SessionContext, type SessionContextValue } from './session-context';
 
 interface SessionProviderProps {
   children: ReactNode;
@@ -38,14 +30,4 @@ export function SessionProvider({ children }: SessionProviderProps) {
       {children}
     </SessionContext.Provider>
   );
-}
-
-export function useSession() {
-  const context = useContext(SessionContext);
-
-  if (context === undefined) {
-    throw new Error('useSession must be used within SessionProvider');
-  }
-
-  return context;
 }
