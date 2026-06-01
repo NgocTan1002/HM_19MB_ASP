@@ -109,21 +109,25 @@ const DEFAULT_N = 6;
 const CHANNEL_OPTIONS = [3, 5, 9, 10];
 const RESOLUTION_D_OPTIONS = [0.5, 0.2, 0.1];
 
-function finiteOrZero(value: number | undefined): number {
+function finiteOrZero(value: number | null | undefined): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : 0;
 }
 
-function finiteOrNaN(value: number | undefined): number {
+function finiteOrNaN(value: number | null | undefined): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : Number.NaN;
 }
 
-function formatNumber(value: number | undefined): string {
+function formatNumber(value: number | null | undefined): string {
   return typeof value === 'number' && Number.isFinite(value)
     ? value.toFixed(4)
     : '---';
 }
 
-function createVector(length: number, source?: number[], fallback = Number.NaN): number[] {
+function createVector(
+  length: number,
+  source?: (number | null)[],
+  fallback = Number.NaN
+): number[] {
   return Array.from({ length }, (_item, index) => {
     const value = source?.[index];
     return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
@@ -203,7 +207,7 @@ function buildChiTietLanDos(
 ): ChiTietLanDo[] {
   const details: ChiTietLanDo[] = [];
 
-  for (let rowIndex = 0; rowIndex < n; rowIndex += 1) {
+  for (let rowIndex = 0; rowIndex < n; rowIndex++) {
     const first = ttn1[rowIndex];
     const second = ttn2[rowIndex];
     const chiThiUut =
@@ -211,18 +215,19 @@ function buildChiTietLanDos(
         ? (first + second) / 2
         : null;
 
-    for (let columnIndex = 0; columnIndex < j; columnIndex += 1) {
-      const value = data[rowIndex]?.[columnIndex];
+    const kenhValues: (number | null)[] = Array.from({ length: 10 }, (_, i) => {
+      if (i >= j) return null;
+      const v = data[rowIndex]?.[i];
+      return Number.isFinite(v) ? v : null;
+    });
 
-      if (Number.isFinite(value)) {
-        details.push({
-          lanDo: rowIndex + 1,
-          kenh: columnIndex + 1,
-          giaTri: value,
-          chiThiUut,
-        });
-      }
-    }
+    details.push({
+      lanDo: rowIndex + 1,
+      kenh: 1,
+      giaTri: data[rowIndex]?.[0] ?? Number.NaN,
+      chiThiUut,
+      kenhValues,
+    });
   }
 
   return details;
@@ -241,15 +246,17 @@ function buildInitialGrid(
 
   initialRow.chiTietLanDos.forEach((detail) => {
     const rowIndex = detail.lanDo - 1;
-    const columnIndex = detail.kenh - 1;
+    if (rowIndex < 0 || rowIndex >= n) return;
 
-    if (
-      rowIndex >= 0 &&
-      rowIndex < n &&
-      columnIndex >= 0 &&
-      columnIndex < j
-    ) {
-      matrix[rowIndex][columnIndex] = detail.giaTri;
+    if (detail.kenhValues) {
+      for (let col = 0; col < Math.min(j, detail.kenhValues.length); col++) {
+        const v = detail.kenhValues[col];
+        if (v !== null && v !== undefined && Number.isFinite(v)) {
+          matrix[rowIndex][col] = v;
+        }
+      }
+    } else if (detail.kenh >= 1 && detail.kenh <= j) {
+      matrix[rowIndex][detail.kenh - 1] = detail.giaTri;
     }
   });
 
@@ -265,18 +272,20 @@ function buildInitialTtn(
   }
 
   const values = createVector(n);
+  const seen = new Set<number>();
 
   initialRow.chiTietLanDos.forEach((detail) => {
     const rowIndex = detail.lanDo - 1;
-
     if (
       rowIndex >= 0 &&
       rowIndex < n &&
+      !seen.has(rowIndex) &&
       detail.chiThiUut !== null &&
       detail.chiThiUut !== undefined &&
       Number.isFinite(detail.chiThiUut)
     ) {
       values[rowIndex] = detail.chiThiUut;
+      seen.add(rowIndex);
     }
   });
 

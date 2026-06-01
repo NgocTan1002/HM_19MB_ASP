@@ -34,7 +34,30 @@ namespace HM_19MB_API.Controllers
         public async Task<IActionResult> GetResults(int sessionId)
         {
             var rows = await DatabaseService.LayKetQuaHieuChuanAsync(sessionId);
-            return Ok(rows);
+            var response = rows.Select(row => new
+            {
+                id = row.Id,
+                stt = row.STT,
+                giaTriDat = ToJsonNumber(row.GiaTriDat),
+                giaTriChiThi = ToJsonNumber(row.GiaTriChiThi),
+                kenh = row.Kenh.Select(ToJsonNumber).ToArray(),
+                giaTriTrungBinh = ToJsonNumber(row.GiaTriTrungBinh),
+                soHieuChinh = ToJsonNumber(row.SoHieuChinh),
+                doOnDinh = ToJsonNumber(row.DoOnDinh),
+                doDongDeu = ToJsonNumber(row.DoDongDeu),
+                doKhongDamBao = ToJsonNumber(row.DoKhongDamBao),
+                uch = ToJsonNumber(row.Uch),
+                ubk = ToJsonNumber(row.Ubk),
+                soKenh = row.SoKenh,
+                soLanDo = row.SoLanDo,
+                phuongPhapB = row.PhuongPhapB,
+                doPhanGiai = ToJsonNumber(row.DoPhanGiai),
+                heSoPhanGiai = ToJsonNumber(row.HeSoPhanGiai),
+                thongSoChuanJson = row.ThongSoChuanJson,
+                soKenhHopLe = row.SoKenhHopLe
+            });
+
+            return Ok(response);
         }
 
         [HttpDelete("results/{stt}")]
@@ -49,7 +72,22 @@ namespace HM_19MB_API.Controllers
         {
             _ = sessionId;
             var details = await DatabaseService.LayChiTietLanDoAsync(id);
-            return Ok(details);
+            var response = details.Select(detail => new
+            {
+                lanDo = detail.LanDo,
+                kenh = detail.Kenh,
+                giaTri = ToJsonNumber(detail.GiaTri),
+                chiThiUut = ToJsonNumber(detail.ChiThiUut),
+                kenhValues = detail.KenhValues?.Select(ToJsonNumber).ToArray()
+            });
+
+            return Ok(response);
         }
+
+        private static double? ToJsonNumber(double value)
+            => double.IsFinite(value) ? value : null;
+
+        private static double? ToJsonNumber(double? value)
+            => value.HasValue && double.IsFinite(value.Value) ? value.Value : null;
     }
 }

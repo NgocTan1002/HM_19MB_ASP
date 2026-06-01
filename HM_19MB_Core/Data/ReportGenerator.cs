@@ -50,13 +50,55 @@ namespace HM_19MB_Core.Data
             var meta = await DatabaseService.LayPhienAsync(phienId)
                           ?? throw new InvalidOperationException("Không tìm thấy phiên hiệu chuẩn.");
             var ketQua = await DatabaseService.LayKetQuaTheoPhienAsync(phienId);
+            var calibRows = await DatabaseService.LayKetQuaHieuChuanAsync(phienId);
 
-            if (ketQua.Count == 0)
-                throw new InvalidOperationException("Không có dữ liệu đo để xuất báo cáo.");
+            if (ketQua.Count == 0 && calibRows.Count == 0)
+                throw new InvalidOperationException("Không có dữ liệu đo hoặc kết quả hiệu chuẩn để xuất báo cáo.");
 
             using var writer = new StreamWriter(outputPath, false, System.Text.Encoding.UTF8);
 
             await GhiHeaderMetadata(writer, meta);
+
+            if (calibRows.Count > 0)
+            {
+                await writer.WriteLineAsync("KET QUA HIEU CHUAN");
+                await writer.WriteLineAsync("");
+                var calibHeader = new System.Text.StringBuilder(
+                    "STT,Gia tri dat,Chi thi TB");
+                for (int i = 1; i <= 10; i++) calibHeader.Append($",Kenh {i}");
+                calibHeader.Append(",t_ch,Delta t,Do on dinh,Do dong deu,U,u_ch,u_bk,So kenh,So lan do,Phuong phap B");
+                await writer.WriteLineAsync(calibHeader.ToString());
+
+                foreach (var row in calibRows)
+                {
+                    var line = new System.Text.StringBuilder();
+                    line.Append($"{row.STT}");
+                    line.Append($",{FormatNumber(row.GiaTriDat)}");
+                    line.Append($",{FormatNumber(row.GiaTriChiThi)}");
+                    for (int i = 0; i < 10; i++) line.Append($",{FormatNumber(row.Kenh[i])}");
+                    line.Append($",{FormatNumber(row.GiaTriTrungBinh)}");
+                    line.Append($",{FormatNumber(row.SoHieuChinh)}");
+                    line.Append($",{FormatNumber(row.DoOnDinh)}");
+                    line.Append($",{FormatNumber(row.DoDongDeu)}");
+                    line.Append($",{FormatNumber(row.DoKhongDamBao)}");
+                    line.Append($",{FormatNumber(row.Uch)}");
+                    line.Append($",{FormatNumber(row.Ubk)}");
+                    line.Append($",{row.SoKenh}");
+                    line.Append($",{row.SoLanDo}");
+                    line.Append($",{row.PhuongPhapB}");
+                    await writer.WriteLineAsync(line.ToString());
+                }
+
+                await writer.WriteLineAsync("");
+            }
+
+            if (ketQua.Count == 0)
+            {
+                await writer.WriteLineAsync("KET QUA DO");
+                await writer.WriteLineAsync("");
+                await writer.WriteLineAsync("Khong co du lieu do realtime trong phien nay.");
+                return outputPath;
+            }
 
             await writer.WriteLineAsync("KẾT QUẢ ĐO");
             await writer.WriteLineAsync("");
@@ -208,6 +250,11 @@ namespace HM_19MB_Core.Data
 
         private static string FormatNullable(bool hasValue, double value)
             => hasValue ? value.ToString("F2", System.Globalization.CultureInfo.InvariantCulture) : "";
+
+        private static string FormatNumber(double value)
+            => double.IsFinite(value)
+                ? value.ToString("F4", System.Globalization.CultureInfo.InvariantCulture)
+                : "";
 
         [Obsolete("Dùng LayPhienAsync + LayKetQuaTheoPhienAsync thay thế.")]
         public static async Task<SessionReportData> GetSessionDataAsync(int sessionId)

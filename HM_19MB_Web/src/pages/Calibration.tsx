@@ -5,20 +5,19 @@ import {
   Col,
   Empty,
   message,
-  Popconfirm,
   Row,
   Skeleton,
   Space,
-  Table,
   Typography,
-  type TableColumnsType,
 } from 'antd';
-import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
+import { PlusOutlined } from '@ant-design/icons';
 import { useNavigate, useParams } from 'react-router-dom';
 import AutoCaptureControl from '../components/calibration/AutoCaptureControl';
 import CalibrationForm, {
   type CalibrationFormHandle,
 } from '../components/calibration/CalibrationForm';
+import CalibrationResultsTable from '../components/calibration/CalibrationResultsTable';
+import { ExportButtons } from '../components/calibration/ExportButtons';
 import UncertaintyBudgetTable from '../components/calibration/UncertaintyBudgetTable';
 import { useSession } from '../contexts/useSession';
 import { calibrationApi } from '../services/api';
@@ -26,22 +25,17 @@ import type { CalibrationResultRow, UncertaintyResult } from '../types/models';
 
 const { Title } = Typography;
 
-type EditorMode = 'add' | 'edit';
-
 interface ActiveEditor {
-  mode: EditorMode;
+  mode: 'add' | 'edit';
   stt: number;
   giaTriDat: number;
   initialRow: CalibrationResultRow | null;
 }
 
-function formatNumber(value: number | undefined, digits = 4): string {
-  return typeof value === 'number' && Number.isFinite(value)
-    ? value.toFixed(digits)
-    : '---';
-}
-
-function parseSessionId(paramId: string | undefined, fallbackId: number | null): number | null {
+function parseSessionId(
+  paramId: string | undefined,
+  fallbackId: number | null
+): number | null {
   if (paramId !== undefined) {
     const parsed = Number(paramId);
     return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
@@ -73,7 +67,6 @@ export default function Calibration() {
   const [latestResult, setLatestResult] = useState<UncertaintyResult | null>(null);
   const [activeTargetTemp, setActiveTargetTemp] = useState(0);
   const [activeJ, setActiveJ] = useState(3);
-  const activeEditorStt = activeEditor?.stt;
 
   const loadResults = useCallback(async () => {
     if (sessionId === null) {
@@ -96,7 +89,16 @@ export default function Calibration() {
     let cancelled = false;
 
     async function load() {
+      setRows([]);
+      setActiveEditor(null);
+      setLoadingEditor(false);
+      setSaving(false);
+      setLatestResult(null);
+      setActiveTargetTemp(0);
+      setActiveJ(3);
+
       if (sessionId === null) {
+        setLoading(false);
         return;
       }
 
@@ -124,6 +126,11 @@ export default function Calibration() {
       cancelled = true;
     };
   }, [sessionId]);
+
+  const maxChannels = useMemo(() => {
+    const max = getMaxChannels(rows);
+    return max > 0 ? max : 3;
+  }, [rows]);
 
   const handleAdd = useCallback(() => {
     const nextStt = getMaxStt(rows) + 1;
@@ -153,12 +160,7 @@ export default function Calibration() {
 
       setLoadingEditor(true);
       try {
-        const response = await calibrationApi.getChiTiet(sessionId, row.id);
-        const completeRow: CalibrationResultRow = {
-          ...row,
-          chiTietLanDos: response.data,
-        };
-
+        const details = await calibrationApi.getChiTiet(sessionId, row.id);
         setLatestResult(null);
         setActiveTargetTemp(row.giaTriDat);
         setActiveJ(row.soKenh || 3);
@@ -166,7 +168,10 @@ export default function Calibration() {
           mode: 'edit',
           stt: row.stt,
           giaTriDat: row.giaTriDat,
-          initialRow: completeRow,
+          initialRow: {
+            ...row,
+            chiTietLanDos: details.data,
+          },
         });
       } catch (error) {
         console.error('[Calibration] Load result details failed:', error);
@@ -186,18 +191,18 @@ export default function Calibration() {
 
       try {
         await calibrationApi.delete(sessionId, stt);
-        message.success('Đã xóa kết quả hiệu chuẩn');
-        if (activeEditorStt === stt) {
+        if (activeEditor?.stt === stt) {
           setActiveEditor(null);
           setLatestResult(null);
         }
         await loadResults();
+        message.success('Đã xóa');
       } catch (error) {
         console.error('[Calibration] Delete failed:', error);
         message.error('Không xóa được kết quả hiệu chuẩn');
       }
     },
-    [activeEditorStt, loadResults, sessionId]
+    [activeEditor, loadResults, sessionId]
   );
 
   const handleSaved = useCallback(
@@ -232,120 +237,14 @@ export default function Calibration() {
     formRef.current?.appendMeasurement(vals, chiThi);
   }, []);
 
-  const maxChannels = useMemo(() => Math.max(getMaxChannels(rows), 1), [rows]);
-
-  const columns = useMemo<TableColumnsType<CalibrationResultRow>>(() => {
-    const channelColumns: TableColumnsType<CalibrationResultRow> = Array.from(
-      { length: maxChannels },
-      (_item, index) => ({
-        title: `Kênh ${index + 1}`,
-        key: `kenh-${index + 1}`,
-        width: 90,
-        align: 'right',
-        render: (_value, row) => formatNumber(row.kenh[index]),
-      })
-    );
-
-    return [
-      {
-        title: 'STT',
-        dataIndex: 'stt',
-        key: 'stt',
-        width: 70,
-        sorter: (a, b) => a.stt - b.stt,
-      },
-      {
-        title: 'Giá trị đặt',
-        dataIndex: 'giaTriDat',
-        key: 'giaTriDat',
-        width: 120,
-        align: 'right',
-        render: (value: number) => formatNumber(value),
-      },
-      {
-        title: 'Chỉ thị TB',
-        dataIndex: 'giaTriChiThi',
-        key: 'giaTriChiThi',
-        width: 120,
-        align: 'right',
-        render: (value: number) => formatNumber(value),
-      },
-      ...channelColumns,
-      {
-        title: 't̄_ch',
-        dataIndex: 'giaTriTrungBinh',
-        key: 'giaTriTrungBinh',
-        width: 110,
-        align: 'right',
-        render: (value: number) => formatNumber(value),
-      },
-      {
-        title: 'Δt',
-        dataIndex: 'soHieuChinh',
-        key: 'soHieuChinh',
-        width: 100,
-        align: 'right',
-        render: (value: number) => formatNumber(value),
-      },
-      {
-        title: 'δt_od',
-        dataIndex: 'doOnDinh',
-        key: 'doOnDinh',
-        width: 100,
-        align: 'right',
-        render: (value: number) => formatNumber(value),
-      },
-      {
-        title: 'δt_dd',
-        dataIndex: 'doDongDeu',
-        key: 'doDongDeu',
-        width: 100,
-        align: 'right',
-        render: (value: number) => formatNumber(value),
-      },
-      {
-        title: 'U',
-        dataIndex: 'doKhongDamBao',
-        key: 'doKhongDamBao',
-        width: 100,
-        align: 'right',
-        render: (value: number) => formatNumber(value),
-      },
-      {
-        title: 'Thao tác',
-        key: 'actions',
-        width: 130,
-        render: (_value, row) => (
-          <Space size={4}>
-            <Button
-              size="small"
-              type="text"
-              icon={<EditOutlined />}
-              onClick={() => void handleEdit(row)}
-            >
-              Sửa
-            </Button>
-            <Popconfirm
-              title="Xóa kết quả này?"
-              okText="Xóa"
-              cancelText="Hủy"
-              okButtonProps={{ danger: true }}
-              onConfirm={() => void handleDelete(row.stt)}
-            >
-              <Button size="small" type="text" danger icon={<DeleteOutlined />}>
-                Xóa
-              </Button>
-            </Popconfirm>
-          </Space>
-        ),
-      },
-    ];
-  }, [handleDelete, handleEdit, maxChannels]);
+  const handleGoToSessions = useCallback(() => {
+    navigate('/sessions');
+  }, [navigate]);
 
   if (sessionId === null) {
     return (
       <Empty description="Chọn phiên đo trước">
-        <Button type="primary" onClick={() => navigate('/sessions')}>
+        <Button type="primary" onClick={handleGoToSessions}>
           Đến trang phiên đo
         </Button>
       </Empty>
@@ -359,27 +258,27 @@ export default function Calibration() {
           <Card
             title={<Title level={4}>Bảng kết quả hiệu chuẩn</Title>}
             extra={
-              <Button
-                type="primary"
-                icon={<PlusOutlined />}
-                onClick={handleAdd}
-              >
-                Thêm điểm đo mới
-              </Button>
+              <Space wrap>
+                <ExportButtons sessionId={sessionId} kenhCount={maxChannels} />
+                <Button
+                  type="primary"
+                  icon={<PlusOutlined />}
+                  onClick={handleAdd}
+                >
+                  Thêm điểm đo mới
+                </Button>
+              </Space>
             }
           >
-            {loading ? (
-              <Skeleton active paragraph={{ rows: 8 }} />
-            ) : (
-              <Table<CalibrationResultRow>
-                rowKey={(row) => `${row.stt}-${row.id ?? 'new'}`}
-                columns={columns}
-                dataSource={rows}
-                pagination={false}
-                size="small"
-                scroll={{ x: 870 + maxChannels * 90 }}
-              />
-            )}
+            <CalibrationResultsTable
+              sessionId={sessionId}
+              rows={rows}
+              loading={loading}
+              onEdit={handleEdit}
+              onDelete={handleDelete}
+              onRefresh={loadResults}
+              editingStt={activeEditor?.stt}
+            />
           </Card>
         </Col>
 

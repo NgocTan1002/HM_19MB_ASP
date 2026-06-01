@@ -55,6 +55,7 @@ export interface ChiTietLanDo {
   kenh: number;
   giaTri: number;
   chiThiUut?: number | null;
+  kenhValues?: (number | null)[];
 }
 
 export interface CalibrationResultRow {
@@ -62,19 +63,19 @@ export interface CalibrationResultRow {
   stt: number;
   giaTriDat: number;
   giaTriChiThi: number;
-  kenh: number[];
+  kenh: (number | null)[];
   giaTriTrungBinh: number;
   soHieuChinh: number;
   doOnDinh: number;
   doDongDeu: number;
   doKhongDamBao: number;
-  uch: number;
-  ubk: number;
+  uch: number | null;
+  ubk: number | null;
   soKenh: number;
   soLanDo: number;
   phuongPhapB: string;
-  doPhanGiai: number;
-  heSoPhanGiai: number;
+  doPhanGiai: number | null;
+  heSoPhanGiai: number | null;
   thongSoChuanJson: string;
   chiTietLanDos?: ChiTietLanDo[] | null;
   soKenhHopLe?: number;
