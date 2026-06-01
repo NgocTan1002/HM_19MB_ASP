@@ -1,5 +1,6 @@
-import { Alert, Card, Col, Row, Space, Typography } from 'antd';
+import { Alert, Button, Card, Col, Modal, Row, Space, Typography } from 'antd';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import DashboardControls, {
   type ChartDataPoint,
 } from '../components/dashboard/DashboardControls';
@@ -117,9 +118,11 @@ function hasHumidityHistory(points: ChartDataPoint[]): boolean {
 }
 
 export default function Dashboard() {
+  const navigate = useNavigate();
   const { currentSessionId } = useSession();
   const clientRef = useRef<MeasurementHubClient | null>(null);
   const isRecordingRef = useRef(false);
+  const activeRunSessionIdRef = useRef<number | null>(null);
 
   const [currentBlock, setCurrentBlock] = useState<MeasurementBlock | null>(null);
   const [lastReceivedAt, setLastReceivedAt] = useState<Date | null>(null);
@@ -159,13 +162,23 @@ export default function Dashboard() {
     const client = clientRef.current;
     clientRef.current = null;
 
-    if (client === null) {
-      setConnectionState('disconnected');
-      return;
+    if (client !== null) {
+      client.offMeasurement();
+      await client.stop();
     }
 
-    client.offMeasurement();
-    await client.stop();
+    const activeRunSessionId = activeRunSessionIdRef.current;
+    activeRunSessionIdRef.current = null;
+
+    if (activeRunSessionId !== null) {
+      try {
+        await measurementApi.stop(activeRunSessionId);
+      } catch (err: unknown) {
+        console.warn('[Dashboard] Stop measurement session failed:', err);
+      }
+    }
+
+    setConnectionState('disconnected');
   }, []);
 
   const connectClient = useCallback(async () => {
@@ -190,10 +203,18 @@ export default function Dashboard() {
     client.onMeasurement(handleMeasurement);
 
     try {
+      await measurementApi.start(currentSessionId);
+      activeRunSessionIdRef.current = currentSessionId;
       await client.start(currentSessionId);
     } catch (err: unknown) {
       client.offMeasurement();
       clientRef.current = null;
+      activeRunSessionIdRef.current = null;
+      try {
+        await measurementApi.stop(currentSessionId);
+      } catch (stopErr: unknown) {
+        console.warn('[Dashboard] Rollback measurement start failed:', stopErr);
+      }
       setConnectionState('disconnected');
       setConnectionError(
         err instanceof Error ? err.message : 'SignalR connection failed'
@@ -202,29 +223,52 @@ export default function Dashboard() {
   }, [currentSessionId, handleMeasurement, stopClient]);
 
   useEffect(() => {
-    let cancelled = false;
+    const client = clientRef.current;
+    const activeRunSessionId = activeRunSessionIdRef.current;
+    clientRef.current = null;
+    activeRunSessionIdRef.current = null;
 
-    async function start() {
-      await connectClient();
+    if (client !== null) {
+      client.offMeasurement();
+      void client.stop();
     }
 
-    void start();
+    if (activeRunSessionId !== null) {
+      void measurementApi.stop(activeRunSessionId);
+    }
+
+    const resetTimeoutId = window.setTimeout(() => {
+      setConnectionState('disconnected');
+      setConnectionError(null);
+      setCurrentBlock(null);
+      setLastReceivedAt(null);
+      setIsRecording(false);
+      setRecordCount(0);
+      setRecordStartTime(null);
+    }, 0);
 
     return () => {
-      cancelled = true;
+      window.clearTimeout(resetTimeoutId);
+    };
+  }, [currentSessionId]);
+
+  useEffect(() => {
+    return () => {
       const client = clientRef.current;
+      const activeRunSessionId = activeRunSessionIdRef.current;
       clientRef.current = null;
+      activeRunSessionIdRef.current = null;
 
       if (client !== null) {
         client.offMeasurement();
         void client.stop();
       }
 
-      if (!cancelled) {
-        setConnectionState('disconnected');
+      if (activeRunSessionId !== null) {
+        void measurementApi.stop(activeRunSessionId);
       }
     };
-  }, [connectClient]);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -277,6 +321,36 @@ export default function Dashboard() {
     void connectClient();
   }, [connectClient]);
 
+  const handleConnectClick = useCallback(() => {
+    if (chartBuffer.length === 0) {
+      void connectClient();
+      return;
+    }
+
+    Modal.confirm({
+      title: 'Phiên này đã có dữ liệu đo',
+      content:
+        'Nếu đo tiếp, dữ liệu mới sẽ được ghi thêm vào phiên hiện tại. Nếu đây là lần đo mới, hãy tạo một phiên đo mới để tránh lẫn dữ liệu.',
+      okText: 'Đo tiếp phiên này',
+      cancelText: 'Tạo phiên mới',
+      onOk: () => {
+        void connectClient();
+      },
+      onCancel: () => {
+        navigate('/sessions');
+      },
+    });
+  }, [chartBuffer.length, connectClient, navigate]);
+
+  const handleDisconnect = useCallback(() => {
+    void stopClient();
+    setConnectionError(null);
+    setCurrentBlock(null);
+    setLastReceivedAt(null);
+    setIsRecording(false);
+    setRecordStartTime(null);
+  }, [stopClient]);
+
   const handleToggleProbe = useCallback((index: number) => {
     setShowProbes(current =>
       current.map((shown, probeIndex) => (probeIndex === index ? !shown : shown))
@@ -310,7 +384,11 @@ export default function Dashboard() {
 
   const statusDescription = useMemo(() => {
     if (currentSessionId === null) {
-      return 'Chọn phiên đo ở header để bắt đầu nhận dữ liệu real-time.';
+      return 'Chọn phiên đo ở header, sau đó bấm Kết nối để nhận dữ liệu real-time.';
+    }
+
+    if (connectionState === 'disconnected') {
+      return `Phiên ${currentSessionId} đã chọn. Bấm Kết nối để bắt đầu nhận dữ liệu.`;
     }
 
     if (currentBlock === null) {
@@ -318,7 +396,7 @@ export default function Dashboard() {
     }
 
     return `Đang theo dõi phiên ${currentSessionId}.`;
-  }, [currentBlock, currentSessionId]);
+  }, [connectionState, currentBlock, currentSessionId]);
 
   return (
     <section className="dashboard-page">
@@ -364,12 +442,34 @@ export default function Dashboard() {
           <Text type="secondary">{statusDescription}</Text>
         </Space>
 
-        <HealthIndicator
-          connectionState={connectionState}
-          lastReceivedAt={lastReceivedAt}
-          onReconnect={handleReconnect}
-          sessionId={currentSessionId}
-        />
+        <Space align="center" wrap>
+          <Button
+            type="primary"
+            onClick={handleConnectClick}
+            disabled={
+              currentSessionId === null ||
+              connectionState === 'connected' ||
+              connectionState === 'connecting' ||
+              connectionState === 'reconnecting'
+            }
+            loading={connectionState === 'connecting'}
+          >
+            Kết nối
+          </Button>
+          <Button
+            danger
+            onClick={handleDisconnect}
+            disabled={connectionState === 'disconnected'}
+          >
+            Ngắt kết nối
+          </Button>
+          <HealthIndicator
+            connectionState={connectionState}
+            lastReceivedAt={lastReceivedAt}
+            onReconnect={handleReconnect}
+            sessionId={currentSessionId}
+          />
+        </Space>
       </div>
 
       {connectionError !== null && (

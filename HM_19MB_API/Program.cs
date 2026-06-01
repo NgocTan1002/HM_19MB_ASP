@@ -1,10 +1,12 @@
 using HM_19MB_Core.Data;
 using HM_19MB_API.Hubs;
+using HM_19MB_API.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
 builder.Services.AddSignalR();
+builder.Services.AddSingleton<MeasurementRunState>();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 

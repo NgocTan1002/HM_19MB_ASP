@@ -114,6 +114,17 @@ export interface UncertaintyResult {
   u: number;
   calculationMethod: string;
   calculatedAt: string;
+  ubk1?: number;
+  ubk2?: number;
+  ubk3?: number;
+  ubk4?: number;
+  ubk?: number;
+  uFinal?: number;
+  tch?: number;
+  ttn?: number;
+  deltaT?: number;
+  deltaOd?: number;
+  deltaDd?: number;
 }
 
 export interface PhienDoSummary {

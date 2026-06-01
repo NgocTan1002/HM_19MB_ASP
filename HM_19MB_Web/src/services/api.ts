@@ -47,6 +47,21 @@ export const measurementApi = {
         client.get<MeasurementRecord[]>(
             `/api/sessions/${sessionId}/measurements`
         ),
+
+    start: (sessionId: number) =>
+        client.post<{ sessionId: number; active: boolean }>(
+            `/api/sessions/${sessionId}/measurements/start`
+        ),
+
+    stop: (sessionId: number) =>
+        client.post<{ sessionId: number; active: boolean }>(
+            `/api/sessions/${sessionId}/measurements/stop`
+        ),
+
+    status: (sessionId: number) =>
+        client.get<{ sessionId: number; active: boolean }>(
+            `/api/sessions/${sessionId}/measurements/status`
+        ),
 };
 
 export const calibrationApi = {
