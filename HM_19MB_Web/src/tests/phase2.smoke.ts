@@ -194,12 +194,39 @@ function testDisconnect35sOffline(): void {
   assert(status === 'OFFLINE', `Expected OFFLINE after 35s, got ${status}`);
 }
 
+function testReconnectStateWarningThenOnline(): void {
+  const lastReceivedAt = new Date(Date.UTC(2026, 4, 29, 8, 0, 0));
+  const reconnectingAt = new Date(Date.UTC(2026, 4, 29, 8, 0, 5));
+  const reconnectedAt = new Date(Date.UTC(2026, 4, 29, 8, 0, 6));
+
+  const reconnectingStatus = getHealthStatus(
+    lastReceivedAt,
+    'reconnecting',
+    reconnectingAt
+  );
+  const reconnectedStatus = getHealthStatus(
+    reconnectedAt,
+    'connected',
+    reconnectedAt
+  );
+
+  assert(
+    reconnectingStatus === 'WARNING',
+    `Expected WARNING while reconnecting, got ${reconnectingStatus}`
+  );
+  assert(
+    reconnectedStatus === 'ONLINE',
+    `Expected ONLINE after reconnect, got ${reconnectedStatus}`
+  );
+}
+
 function main(): void {
   const results = [
     runTest('mock MeasurementBlock with full temperature and humidity data', testMockFullBlock),
     runTest('mock MeasurementBlock without humidity data', testMockNoHumidityBlock),
     runTest('simulate 750 blocks and keep only 720 points', testBufferLimit),
     runTest('simulate disconnect/stale data for 35s and resolve OFFLINE', testDisconnect35sOffline),
+    runTest('simulate reconnect state transitions', testReconnectStateWarningThenOnline),
   ];
 
   if (results.some(result => !result)) {

@@ -65,7 +65,12 @@ namespace HM_19MB_Core.Data
             foreach (var d in ChiTietLanDos)
             {
                 if (d.LanDo > n) n = d.LanDo;
-                if (d.Kenh > k) k = d.Kenh;
+                if (d.KenhValues != null)
+                {
+                    for (int i = 0; i < d.KenhValues.Length; i++)
+                        if (d.KenhValues[i].HasValue && i + 1 > k) k = i + 1;
+                }
+                else if (d.Kenh > k) k = d.Kenh;
             }
             if (n == 0 || k == 0) return null;
 
@@ -75,7 +80,21 @@ namespace HM_19MB_Core.Data
                     matrix[i, j] = double.NaN;
 
             foreach (var d in ChiTietLanDos)
-                matrix[d.LanDo - 1, d.Kenh - 1] = d.GiaTri;
+            {
+                int rowIndex = d.LanDo - 1;
+                if (rowIndex < 0 || rowIndex >= n) continue;
+
+                if (d.KenhValues != null)
+                {
+                    for (int i = 0; i < Math.Min(d.KenhValues.Length, k); i++)
+                        if (d.KenhValues[i].HasValue)
+                            matrix[rowIndex, i] = d.KenhValues[i]!.Value;
+                }
+                else if (d.Kenh >= 1 && d.Kenh <= k)
+                {
+                    matrix[rowIndex, d.Kenh - 1] = d.GiaTri;
+                }
+            }
 
             return matrix;
         }
@@ -93,7 +112,7 @@ namespace HM_19MB_Core.Data
             for (int i = 0; i < n; i++) arr[i] = double.NaN;
 
             foreach (var d in ChiTietLanDos)
-                if (d.ChiThiUut.HasValue && d.Kenh == 1)
+                if (d.ChiThiUut.HasValue && (d.KenhValues != null || d.Kenh == 1))
                     arr[d.LanDo - 1] = d.ChiThiUut.Value;
 
             return arr;
@@ -108,6 +127,7 @@ namespace HM_19MB_Core.Data
         public int Kenh { get; set; }
         public double GiaTri { get; set; }
         public double? ChiThiUut { get; set; }
+        public double?[]? KenhValues { get; set; }
     }
 
     // ── DatabaseService partial ──────────────────────────────────────────
@@ -308,20 +328,21 @@ namespace HM_19MB_Core.Data
             {
                 short lanDo = rdr.GetInt16(0);
                 double? chiThi = rdr.IsDBNull(1) ? null : rdr.GetDouble(1);
+                double?[] kenhValues = new double?[10];
 
                 for (int k = 0; k < 10; k++)
                 {
                     int ordinal = 2 + k;
-                    if (rdr.IsDBNull(ordinal)) continue;
-
-                    list.Add(new ChiTietLanDo
-                    {
-                        LanDo = lanDo,
-                        Kenh = k + 1,
-                        GiaTri = rdr.GetDouble(ordinal),
-                        ChiThiUut = chiThi,
-                    });
+                    if (!rdr.IsDBNull(ordinal))
+                        kenhValues[k] = rdr.GetDouble(ordinal);
                 }
+
+                list.Add(new ChiTietLanDo
+                {
+                    LanDo = lanDo,
+                    ChiThiUut = chiThi,
+                    KenhValues = kenhValues,
+                });
             }
 
             return list;

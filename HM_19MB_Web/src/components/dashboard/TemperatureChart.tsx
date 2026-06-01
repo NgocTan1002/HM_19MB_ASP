@@ -22,28 +22,33 @@ import type { MeasurementBlock } from '../../types/models';
 
 interface TemperatureChartProps {
   newBlock: MeasurementBlock | null;
+  historicalData?: HistoricalChartPoint[];
+  showTemperature: boolean;
   showHumidity: boolean;
   showProbes: boolean[];
   onToggleProbe: (index: number) => void;
   height?: number;
 }
 
+interface HistoricalChartPoint {
+  timestamp: string;
+  temps: (number | null)[];
+  avgTemp: number;
+  avgHum: number | null;
+}
+
 interface ChartPoint {
   timestamp: number;
-  timeLabel: string;
   avgTemperature: number | null;
   avgHumidity: number | null;
   probeTemperatures: Array<number | null>;
-  probeHumidities: Array<number | null>;
 }
 
 interface FlatChartPoint {
   timestamp: number;
-  timeLabel: string;
   avgTemperature: number | null;
   avgHumidity: number | null;
   [key: `probeTemp${number}`]: number | null;
-  [key: `probeHumidity${number}`]: number | null;
 }
 
 type ChartTooltipProps = TooltipContentProps;
@@ -74,6 +79,11 @@ function toNullableNumber(value: number | undefined): number | null {
   return isValidNumber(value) ? value : null;
 }
 
+function parseTimestamp(timestamp: string): number {
+  const parsed = Date.parse(timestamp);
+  return Number.isNaN(parsed) ? Date.now() : parsed;
+}
+
 function formatTime(timestamp: number): string {
   return new Intl.DateTimeFormat('vi-VN', {
     hour: '2-digit',
@@ -83,17 +93,9 @@ function formatTime(timestamp: number): string {
   }).format(new Date(timestamp));
 }
 
-function parseTimestamp(timestamp: string): number {
-  const parsed = Date.parse(timestamp);
-  return Number.isNaN(parsed) ? Date.now() : parsed;
-}
-
 function createChartPoint(block: MeasurementBlock): ChartPoint {
-  const timestamp = parseTimestamp(block.timestamp);
-
   return {
-    timestamp,
-    timeLabel: formatTime(timestamp),
+    timestamp: parseTimestamp(block.timestamp),
     avgTemperature: toNullableNumber(block.avgTemperature),
     avgHumidity: toNullableNumber(block.avgHumidity),
     probeTemperatures: Array.from({ length: 10 }, (_, index) =>
@@ -101,10 +103,16 @@ function createChartPoint(block: MeasurementBlock): ChartPoint {
         ? toNullableNumber(block.probeTemperatures[index])
         : null
     ),
-    probeHumidities: Array.from({ length: 10 }, (_, index) =>
-      index < block.probeCount
-        ? toNullableNumber(block.probeHumidities[index])
-        : null
+  };
+}
+
+function createChartPointFromHistory(point: HistoricalChartPoint): ChartPoint {
+  return {
+    timestamp: parseTimestamp(point.timestamp),
+    avgTemperature: toNullableNumber(point.avgTemp),
+    avgHumidity: point.avgHum,
+    probeTemperatures: Array.from({ length: 10 }, (_, index) =>
+      point.temps[index] ?? null
     ),
   };
 }
@@ -112,14 +120,12 @@ function createChartPoint(block: MeasurementBlock): ChartPoint {
 function flattenChartPoint(point: ChartPoint): FlatChartPoint {
   const flatPoint: FlatChartPoint = {
     timestamp: point.timestamp,
-    timeLabel: point.timeLabel,
     avgTemperature: point.avgTemperature,
     avgHumidity: point.avgHumidity,
   };
 
   for (let index = 0; index < 10; index += 1) {
     flatPoint[`probeTemp${index}`] = point.probeTemperatures[index];
-    flatPoint[`probeHumidity${index}`] = point.probeHumidities[index];
   }
 
   return flatPoint;
@@ -155,10 +161,7 @@ function getTemperatureDomain(data: FlatChartPoint[]): [number, number] | ['auto
     return ['auto', 'auto'];
   }
 
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-
-  return [Math.floor(min - 1), Math.ceil(max + 1)];
+  return [Math.floor(Math.min(...values) - 1), Math.ceil(Math.max(...values) + 1)];
 }
 
 function getLegendDataKey(entry: LegendPayload): string | number | undefined {
@@ -203,6 +206,8 @@ function CustomTooltip({ active, payload, label }: ChartTooltipProps) {
 
 export default function TemperatureChart({
   newBlock,
+  historicalData = [],
+  showTemperature,
   showHumidity,
   showProbes,
   onToggleProbe,
@@ -263,6 +268,30 @@ export default function TemperatureChart({
     scheduleRender();
   }, [newBlock, scheduleRender]);
 
+  useEffect(() => {
+    let cancelled = false;
+    const history = historicalData
+      .slice(-MAX_CHART_POINTS)
+      .map(createChartPointFromHistory);
+
+    bufferRef.current = history;
+    const timeoutId = window.setTimeout(() => {
+      if (cancelled) {
+        return;
+      }
+
+      setDataSnapshot(history);
+      setZoomStart(null);
+      setZoomEnd(null);
+      setZoomDomain(null);
+    }, 0);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+    };
+  }, [historicalData]);
+
   const chartData = useMemo(() => {
     const data = dataSnapshot.map(flattenChartPoint);
 
@@ -278,6 +307,7 @@ export default function TemperatureChart({
     () => getTemperatureDomain(chartData),
     [chartData]
   );
+  const showPointDots = chartData.length > 0 && chartData.length <= 20;
 
   const averageLineColor = useMemo(() => {
     if (typeof window === 'undefined') {
@@ -347,11 +377,9 @@ export default function TemperatureChart({
     const dataKey = String(entry.dataKey ?? '');
     const match = /^probeTemp(\d+)$/.exec(dataKey);
 
-    if (match === null) {
-      return;
+    if (match !== null) {
+      onToggleProbe(Number(match[1]));
     }
-
-    onToggleProbe(Number(match[1]));
   }, [onToggleProbe]);
 
   const renderLegend = useCallback((props: LegendContentProps) => {
@@ -387,7 +415,7 @@ export default function TemperatureChart({
     ) : null;
 
   return (
-    <section className="temperature-chart" aria-label="Biểu đồ nhiệt độ độ ẩm real-time">
+    <section className="temperature-chart" aria-label="Biểu đồ nhiệt độ - độ ẩm">
       <style>
         {`
           .temperature-chart {
@@ -486,17 +514,19 @@ export default function TemperatureChart({
             tickLine={false}
             type="number"
           />
-          <YAxis
-            allowDataOverflow
-            domain={temperatureDomain}
-            tickFormatter={value => `${Number(value).toFixed(0)}°`}
-            tickLine={false}
-            yAxisId="temperature"
-          />
+          {showTemperature && (
+            <YAxis
+              allowDataOverflow
+              domain={temperatureDomain}
+              tickFormatter={value => `${Number(value).toFixed(0)}°`}
+              tickLine={false}
+              yAxisId="temperature"
+            />
+          )}
           {showHumidity && (
             <YAxis
               domain={[0, 100]}
-              orientation="right"
+              orientation={showTemperature ? 'right' : 'left'}
               tickFormatter={value => `${Number(value).toFixed(0)}%`}
               tickLine={false}
               yAxisId="humidity"
@@ -505,44 +535,47 @@ export default function TemperatureChart({
           <Tooltip content={(props: ChartTooltipProps) => <CustomTooltip {...props} />} />
           <Legend content={renderLegend} />
 
-          {Array.from({ length: 10 }, (_, index) => {
-            if (showProbes[index] === false) {
-              return null;
-            }
+          {showTemperature &&
+            Array.from({ length: 10 }, (_, index) => {
+              if (showProbes[index] === false) {
+                return null;
+              }
 
-            return (
-              <Line
-                connectNulls
-                dataKey={`probeTemp${index}`}
-                dot={false}
-                isAnimationActive={false}
-                key={`probe-temp-${index}`}
-                name={`Đầu đo ${index + 1}`}
-                stroke={PROBE_COLORS[index]}
-                strokeWidth={1.5}
-                type="monotone"
-                yAxisId="temperature"
-              />
-            );
-          })}
+              return (
+                <Line
+                  connectNulls
+                  dataKey={`probeTemp${index}`}
+                  dot={showPointDots ? { r: 2 } : false}
+                  isAnimationActive={false}
+                  key={`probe-temp-${index}`}
+                  name={`Đầu đo ${index + 1}`}
+                  stroke={PROBE_COLORS[index]}
+                  strokeWidth={1.5}
+                  type="monotone"
+                  yAxisId="temperature"
+                />
+              );
+            })}
 
-          <Line
-            connectNulls
-            dataKey="avgTemperature"
-            dot={false}
-            isAnimationActive={false}
-            name="Trung bình nhiệt"
-            stroke={averageLineColor}
-            strokeWidth={2.5}
-            type="monotone"
-            yAxisId="temperature"
-          />
+          {showTemperature && (
+            <Line
+              connectNulls
+              dataKey="avgTemperature"
+              dot={showPointDots ? { r: 2.5 } : false}
+              isAnimationActive={false}
+              name="Trung bình nhiệt"
+              stroke={averageLineColor}
+              strokeWidth={2.5}
+              type="monotone"
+              yAxisId="temperature"
+            />
+          )}
 
           {showHumidity && (
             <Line
               connectNulls
               dataKey="avgHumidity"
-              dot={false}
+              dot={showPointDots ? { r: 2.5 } : false}
               isAnimationActive={false}
               name="Trung bình độ ẩm"
               stroke="#1677ff"

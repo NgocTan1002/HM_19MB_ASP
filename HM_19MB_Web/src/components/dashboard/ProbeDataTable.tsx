@@ -1,16 +1,11 @@
-import {
-  CheckCircleFilled,
-  CloseCircleFilled,
-  MinusCircleFilled,
-  WarningFilled,
-} from '@ant-design/icons';
-import { Skeleton, Table, Tag, Typography } from 'antd';
+import { Skeleton, Table, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { memo, useMemo } from 'react';
 import type { MeasurementBlock } from '../../types/models';
 
 interface ProbeDataTableProps {
   block: MeasurementBlock | null;
+  showTemperature: boolean;
   showHumidity: boolean;
   showProbes?: boolean[];
   highlightProbeIndex?: number;
@@ -18,7 +13,6 @@ interface ProbeDataTableProps {
 }
 
 type ProbeRowKind = 'probe' | 'average' | 'uniformity' | 'stability';
-type DeltaStatus = 'ok' | 'warning' | 'danger' | 'none';
 
 interface ProbeRow {
   key: string;
@@ -28,9 +22,7 @@ interface ProbeRow {
   probeIndex: number | null;
   temperature: number | null;
   humidity: number | null;
-  deltaTemperature: number | null;
-  status: DeltaStatus;
-  isMaxDelta: boolean;
+  timestamp: string;
 }
 
 const { Text } = Typography;
@@ -51,82 +43,19 @@ function formatHumidity(value: number | null): string {
   return value === null ? '---' : value.toFixed(1);
 }
 
-function formatDelta(value: number | null): string {
-  if (value === null) {
+function formatTime(timestamp: string): string {
+  const parsed = Date.parse(timestamp);
+
+  if (Number.isNaN(parsed)) {
     return '---';
   }
 
-  const sign = value > 0 ? '+' : '';
-  return `${sign}${value.toFixed(2)}`;
-}
-
-function getDeltaStatus(deltaTemperature: number | null): DeltaStatus {
-  if (deltaTemperature === null) {
-    return 'none';
-  }
-
-  const absDelta = Math.abs(deltaTemperature);
-
-  if (absDelta <= 0.5) {
-    return 'ok';
-  }
-
-  if (absDelta <= 1.0) {
-    return 'warning';
-  }
-
-  return 'danger';
-}
-
-function renderStatus(status: DeltaStatus) {
-  if (status === 'ok') {
-    return (
-      <Tag
-        aria-label="Trạng thái ổn định"
-        className="probe-status-tag"
-        color="success"
-        icon={<CheckCircleFilled />}
-      >
-        Xanh
-      </Tag>
-    );
-  }
-
-  if (status === 'warning') {
-    return (
-      <Tag
-        aria-label="Trạng thái cảnh báo"
-        className="probe-status-tag"
-        color="warning"
-        icon={<WarningFilled />}
-      >
-        Vàng
-      </Tag>
-    );
-  }
-
-  if (status === 'danger') {
-    return (
-      <Tag
-        aria-label="Trạng thái vượt ngưỡng"
-        className="probe-status-tag"
-        color="error"
-        icon={<CloseCircleFilled />}
-      >
-        Đỏ
-      </Tag>
-    );
-  }
-
-  return (
-    <Tag
-      aria-label="Không có trạng thái"
-      className="probe-status-tag"
-      icon={<MinusCircleFilled />}
-    >
-      ---
-    </Tag>
-  );
+  return new Intl.DateTimeFormat('vi-VN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).format(new Date(parsed));
 }
 
 function buildRows(block: MeasurementBlock): ProbeRow[] {
@@ -138,16 +67,6 @@ function buildRows(block: MeasurementBlock): ProbeRow[] {
 
   const probeRows = Array.from({ length: 10 }, (_, index): ProbeRow => {
     const isActiveProbe = index < probeCount;
-    const temperature = isActiveProbe
-      ? toNullableNumber(block.probeTemperatures[index])
-      : null;
-    const humidity = isActiveProbe
-      ? toNullableNumber(block.probeHumidities[index])
-      : null;
-    const deltaTemperature =
-      temperature !== null && avgTemperature !== null
-        ? temperature - avgTemperature
-        : null;
 
     return {
       key: `probe-${index + 1}`,
@@ -155,33 +74,16 @@ function buildRows(block: MeasurementBlock): ProbeRow[] {
       name: `Đầu đo ${index + 1}`,
       kind: 'probe',
       probeIndex: index,
-      temperature,
-      humidity,
-      deltaTemperature,
-      status: getDeltaStatus(deltaTemperature),
-      isMaxDelta: false,
+      temperature: isActiveProbe
+        ? toNullableNumber(block.probeTemperatures[index])
+        : null,
+      humidity: isActiveProbe ? toNullableNumber(block.probeHumidities[index]) : null,
+      timestamp: block.timestamp,
     };
   });
 
-  const maxDelta = probeRows.reduce<number | null>((currentMax, row) => {
-    if (row.deltaTemperature === null) {
-      return currentMax;
-    }
-
-    const absDelta = Math.abs(row.deltaTemperature);
-    return currentMax === null || absDelta > currentMax ? absDelta : currentMax;
-  }, null);
-
-  const rowsWithMaxDelta = probeRows.map(row => ({
-    ...row,
-    isMaxDelta:
-      maxDelta !== null &&
-      row.deltaTemperature !== null &&
-      Math.abs(row.deltaTemperature) === maxDelta,
-  }));
-
   return [
-    ...rowsWithMaxDelta,
+    ...probeRows,
     {
       key: 'average',
       stt: '11',
@@ -190,9 +92,7 @@ function buildRows(block: MeasurementBlock): ProbeRow[] {
       probeIndex: null,
       temperature: avgTemperature,
       humidity: avgHumidity,
-      deltaTemperature: null,
-      status: 'none',
-      isMaxDelta: false,
+      timestamp: block.timestamp,
     },
     {
       key: 'uniformity',
@@ -202,9 +102,7 @@ function buildRows(block: MeasurementBlock): ProbeRow[] {
       probeIndex: null,
       temperature: uniformityTemp,
       humidity: uniformityHumidity,
-      deltaTemperature: null,
-      status: 'none',
-      isMaxDelta: false,
+      timestamp: block.timestamp,
     },
     {
       key: 'stability',
@@ -214,15 +112,14 @@ function buildRows(block: MeasurementBlock): ProbeRow[] {
       probeIndex: null,
       temperature: null,
       humidity: null,
-      deltaTemperature: null,
-      status: 'none',
-      isMaxDelta: false,
+      timestamp: block.timestamp,
     },
   ];
 }
 
 function ProbeDataTable({
   block,
+  showTemperature,
   showHumidity,
   showProbes,
   highlightProbeIndex,
@@ -248,10 +145,16 @@ function ProbeDataTable({
     });
   }, [block, showProbes]);
 
-  const hasHumidity = useMemo(
-    () => rows.some(row => row.humidity !== null),
-    [rows]
-  );
+  const hasHumidity = useMemo(() => {
+    if (block === null) {
+      return false;
+    }
+
+    return (
+      rows.some(row => row.humidity !== null) ||
+      block.stabilityHumidity.trim() !== '---'
+    );
+  }, [block, rows]);
 
   const columns = useMemo<ColumnsType<ProbeRow>>(() => {
     const tableColumns: ColumnsType<ProbeRow> = [
@@ -259,31 +162,32 @@ function ProbeDataTable({
         title: 'STT',
         dataIndex: 'stt',
         key: 'stt',
-        width: 72,
+        width: 48,
         render: (value: ProbeRow['stt']) => (
           <Text aria-label={`STT ${value}`}>{value}</Text>
         ),
       },
       {
-        title: 'Tên',
+        title: 'Đầu đo',
         dataIndex: 'name',
         key: 'name',
-        width: 180,
+        width: 116,
+        ellipsis: true,
         render: (value: ProbeRow['name'], row) => (
-          <Text
-            aria-label={`Tên dòng ${value}`}
-            strong={row.kind !== 'probe'}
-          >
+          <Text aria-label={`Dòng ${value}`} strong={row.kind !== 'probe'}>
             {value}
           </Text>
         ),
       },
-      {
+    ];
+
+    if (showTemperature) {
+      tableColumns.push({
         title: 'Nhiệt độ (°C)',
         dataIndex: 'temperature',
         key: 'temperature',
         align: 'right',
-        width: 150,
+        width: 96,
         render: (value: ProbeRow['temperature'], row) => {
           const displayValue =
             row.kind === 'stability' && block !== null
@@ -299,8 +203,8 @@ function ProbeDataTable({
             </span>
           );
         },
-      },
-    ];
+      });
+    }
 
     if (showHumidity && hasHumidity) {
       tableColumns.push({
@@ -308,7 +212,7 @@ function ProbeDataTable({
         dataIndex: 'humidity',
         key: 'humidity',
         align: 'right',
-        width: 140,
+        width: 86,
         render: (value: ProbeRow['humidity'], row) => {
           const displayValue =
             row.kind === 'stability' && block !== null
@@ -327,34 +231,27 @@ function ProbeDataTable({
       });
     }
 
-    tableColumns.push(
-      {
-        title: 'Delta T (°C)',
-        dataIndex: 'deltaTemperature',
-        key: 'deltaTemperature',
-        align: 'right',
-        width: 140,
-        render: (value: ProbeRow['deltaTemperature'], row) => (
+    tableColumns.push({
+      title: 'Thời gian',
+      dataIndex: 'timestamp',
+      key: 'timestamp',
+      width: 92,
+      render: (value: ProbeRow['timestamp'], row) => {
+        const displayValue = formatTime(value);
+
+        return (
           <span
-            aria-label={`${row.name} delta T ${formatDelta(value)}`}
-            className={`probe-value-cell probe-delta-${row.status}`}
+            aria-label={`${row.name} thời gian ${displayValue}`}
+            className="probe-value-cell"
           >
-            {row.kind === 'probe' ? formatDelta(value) : '---'}
+            {displayValue}
           </span>
-        ),
+        );
       },
-      {
-        title: 'Trạng thái',
-        dataIndex: 'status',
-        key: 'status',
-        width: 140,
-        render: (value: ProbeRow['status'], row) =>
-          row.kind === 'probe' ? renderStatus(value) : renderStatus('none'),
-      }
-    );
+    });
 
     return tableColumns;
-  }, [block, hasHumidity, showHumidity]);
+  }, [block, hasHumidity, showHumidity, showTemperature]);
 
   if (block === null) {
     return (
@@ -372,23 +269,31 @@ function ProbeDataTable({
       <style>
         {`
           .probe-data-table .probe-value-cell {
+            display: inline-block;
+            max-width: 100%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
             transition: color 0.3s ease, background-color 0.3s ease;
           }
 
-          .probe-data-table .probe-delta-ok {
-            color: #389e0d;
+          .probe-data-table .ant-table {
+            overflow-x: hidden;
           }
 
-          .probe-data-table .probe-delta-warning {
-            color: #d48806;
+          .probe-data-table .ant-table-cell {
+            padding: 8px 6px !important;
+            white-space: nowrap;
           }
 
-          .probe-data-table .probe-delta-danger {
-            color: #cf1322;
+          .probe-data-table .ant-table-thead > tr > th {
+            font-size: 12px;
+            line-height: 1.25;
           }
 
-          .probe-data-table .probe-row-max-delta > td {
-            background: #fff7e6;
+          .probe-data-table .ant-table-tbody > tr > td {
+            font-size: 12px;
+            line-height: 1.35;
           }
 
           .probe-data-table .probe-row-selected > td {
@@ -397,11 +302,6 @@ function ProbeDataTable({
 
           .probe-data-table .probe-row-clickable {
             cursor: pointer;
-          }
-
-          .probe-data-table .probe-status-tag {
-            min-width: 72px;
-            justify-content: center;
           }
         `}
       </style>
@@ -421,10 +321,6 @@ function ProbeDataTable({
         rowClassName={row => {
           const classNames: string[] = [];
 
-          if (row.isMaxDelta) {
-            classNames.push('probe-row-max-delta');
-          }
-
           if (
             row.probeIndex !== null &&
             highlightProbeIndex === row.probeIndex
@@ -440,7 +336,8 @@ function ProbeDataTable({
         }}
         rowKey="key"
         scroll={{ y: 400 }}
-        size="middle"
+        size="small"
+        tableLayout="fixed"
         virtual
       />
     </div>

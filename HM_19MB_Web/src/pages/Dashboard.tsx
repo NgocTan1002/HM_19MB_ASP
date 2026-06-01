@@ -12,9 +12,8 @@ import {
   type HubConnectionState,
   type MeasurementHubClient,
 } from '../services/signalr';
-import type { MeasurementBlock } from '../types/models';
-
-type HumidityMode = 'temp' | 'both' | 'humidity';
+import { measurementApi } from '../services/api';
+import type { MeasurementBlock, MeasurementRecord } from '../types/models';
 
 const { Text, Title } = Typography;
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5135';
@@ -59,13 +58,61 @@ function appendChartPoint(
   return nextPoints.slice(nextPoints.length - MAX_CHART_POINTS);
 }
 
+function recordToChartPoint(record: MeasurementRecord): ChartDataPoint {
+  return {
+    timestamp: record.thoiGianDo,
+    temps: Array.from({ length: 10 }, (_, index) =>
+      record.hasNhietDo[index] ? record.nhietDo[index] : null
+    ),
+    hums: Array.from({ length: 10 }, (_, index) =>
+      record.hasDoAm[index] ? record.doAm[index] : null
+    ),
+    avgTemp: record.nhietDoTb,
+    avgHum: record.hasDoAmTb ? record.doAmTb : null,
+  };
+}
+
 function getSelectableProbeIndexes(block: MeasurementBlock | null): number[] {
   if (block === null) {
     return Array.from({ length: 10 }, (_, index) => index);
   }
 
   return Array.from({ length: 10 }, (_, index) => index).filter(index =>
-    index < block.probeCount && isValidNumber(block.probeTemperatures[index])
+    index < block.probeCount &&
+    (isValidNumber(block.probeTemperatures[index]) ||
+      isValidNumber(block.probeHumidities[index]))
+  );
+}
+
+function hasTemperatureData(block: MeasurementBlock | null): boolean {
+  if (block === null) {
+    return false;
+  }
+
+  return block.probeTemperatures.some((value, index) =>
+    index < block.probeCount && isValidNumber(value)
+  );
+}
+
+function hasHumidityData(block: MeasurementBlock | null): boolean {
+  if (block === null) {
+    return false;
+  }
+
+  return block.probeHumidities.some((value, index) =>
+    index < block.probeCount && isValidNumber(value)
+  );
+}
+
+function hasTemperatureHistory(points: ChartDataPoint[]): boolean {
+  return points.some(point =>
+    point.temps.some(value => value !== null && !Number.isNaN(value))
+  );
+}
+
+function hasHumidityHistory(points: ChartDataPoint[]): boolean {
+  return points.some(point =>
+    point.hums.some(value => value !== null && !Number.isNaN(value))
   );
 }
 
@@ -79,7 +126,6 @@ export default function Dashboard() {
   const [connectionState, setConnectionState] =
     useState<HubConnectionState>('disconnected');
   const [connectionError, setConnectionError] = useState<string | null>(null);
-  const [humidityMode, setHumidityMode] = useState<HumidityMode>('both');
   const [showProbes, setShowProbes] = useState<boolean[]>(
     () => Array.from({ length: 10 }, () => true)
   );
@@ -93,7 +139,10 @@ export default function Dashboard() {
     isRecordingRef.current = isRecording;
   }, [isRecording]);
 
-  const showHumidity = humidityMode !== 'temp';
+  const showTemperature =
+    hasTemperatureData(currentBlock) || hasTemperatureHistory(chartBuffer);
+  const showHumidity =
+    hasHumidityData(currentBlock) || hasHumidityHistory(chartBuffer);
 
   const handleMeasurement = useCallback((block: MeasurementBlock) => {
     setCurrentBlock(block);
@@ -176,6 +225,53 @@ export default function Dashboard() {
       }
     };
   }, [connectClient]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const resetTimeoutId = window.setTimeout(() => {
+      if (cancelled) {
+        return;
+      }
+
+      setChartBuffer([]);
+      setCurrentBlock(null);
+      setLastReceivedAt(null);
+    }, 0);
+
+    async function loadHistoricalData(sessionId: number) {
+      try {
+        const response = await measurementApi.getBySession(sessionId);
+
+        if (cancelled) {
+          return;
+        }
+
+        const points = response.data
+          .slice(-MAX_CHART_POINTS)
+          .map(recordToChartPoint);
+        setChartBuffer(points);
+      } catch (err: unknown) {
+        if (cancelled) {
+          return;
+        }
+
+        setConnectionError(
+          err instanceof Error
+            ? `[History] ${err.message}`
+            : '[History] Failed to load measurement history'
+        );
+      }
+    }
+
+    if (currentSessionId !== null) {
+      void loadHistoricalData(currentSessionId);
+    }
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(resetTimeoutId);
+    };
+  }, [currentSessionId]);
 
   const handleReconnect = useCallback(() => {
     void connectClient();
@@ -290,9 +386,7 @@ export default function Dashboard() {
       <DashboardControls
         chartBuffer={chartBuffer}
         currentBlock={currentBlock}
-        humidityMode={humidityMode}
         isRecording={isRecording}
-        onHumidityModeChange={setHumidityMode}
         onToggleAllProbes={handleToggleAllProbes}
         onToggleProbe={handleToggleProbe}
         onToggleRecording={handleToggleRecording}
@@ -306,9 +400,11 @@ export default function Dashboard() {
         <Col xs={24} xl={14}>
           <Card className="dashboard-card" title="Biểu đồ real-time">
             <TemperatureChart
+              historicalData={chartBuffer}
               height={380}
-              newBlock={currentBlock}
+              newBlock={null}
               onToggleProbe={handleToggleProbe}
+              showTemperature={showTemperature}
               showHumidity={showHumidity}
               showProbes={showProbes}
             />
@@ -321,6 +417,7 @@ export default function Dashboard() {
               block={currentBlock}
               highlightProbeIndex={selectedProbeIndex}
               onProbeSelect={setSelectedProbeIndex}
+              showTemperature={showTemperature}
               showHumidity={showHumidity}
               showProbes={showProbes}
             />

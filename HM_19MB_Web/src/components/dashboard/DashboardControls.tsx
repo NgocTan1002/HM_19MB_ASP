@@ -8,12 +8,12 @@ import {
   Card,
   Checkbox,
   Collapse,
+  Col,
   Grid,
   Row,
-  Col,
-  Segmented,
   Space,
   Statistic,
+  Tag,
   Typography,
 } from 'antd';
 import type { CheckboxOptionType } from 'antd/es/checkbox/Group';
@@ -31,8 +31,6 @@ export interface ChartDataPoint {
 
 interface DashboardControlsProps {
   currentBlock: MeasurementBlock | null;
-  humidityMode: 'temp' | 'both' | 'humidity';
-  onHumidityModeChange: (mode: 'temp' | 'both' | 'humidity') => void;
   showProbes: boolean[];
   onToggleProbe: (index: number) => void;
   onToggleAllProbes: (show: boolean) => void;
@@ -57,6 +55,16 @@ function isValidNumber(value: number | undefined | null): value is number {
   return typeof value === 'number' && !Number.isNaN(value);
 }
 
+function hasTemperatureData(block: MeasurementBlock | null): boolean {
+  if (block === null) {
+    return false;
+  }
+
+  return block.probeTemperatures.some((value, index) =>
+    index < block.probeCount && isValidNumber(value)
+  );
+}
+
 function hasHumidityData(block: MeasurementBlock | null): boolean {
   if (block === null) {
     return false;
@@ -69,6 +77,10 @@ function hasHumidityData(block: MeasurementBlock | null): boolean {
 
 function formatTemperature(value: number | null | undefined): string {
   return isValidNumber(value) ? `${value.toFixed(1)}°C` : '---';
+}
+
+function formatHumidity(value: number | null | undefined): string {
+  return isValidNumber(value) ? `${value.toFixed(1)}%` : '---';
 }
 
 function formatDuration(totalSeconds: number): string {
@@ -123,8 +135,6 @@ function calculateTemperatureStats(chartBuffer: ChartDataPoint[]): TemperatureSt
 
 export default function DashboardControls({
   currentBlock,
-  humidityMode,
-  onHumidityModeChange,
   showProbes,
   onToggleProbe,
   onToggleAllProbes,
@@ -144,6 +154,10 @@ export default function DashboardControls({
     calculateTemperatureStats(chartBuffer)
   );
 
+  const temperatureAvailable = useMemo(
+    () => hasTemperatureData(currentBlock),
+    [currentBlock]
+  );
   const humidityAvailable = useMemo(
     () => hasHumidityData(currentBlock),
     [currentBlock]
@@ -173,12 +187,6 @@ export default function DashboardControls({
     };
   }, []);
 
-  useEffect(() => {
-    if (!humidityAvailable && humidityMode !== 'temp') {
-      onHumidityModeChange('temp');
-    }
-  }, [humidityAvailable, humidityMode, onHumidityModeChange]);
-
   const recordingSeconds = useMemo(() => {
     if (!isRecording || recordStartTime === null) {
       return 0;
@@ -202,12 +210,20 @@ export default function DashboardControls({
           currentBlock !== null && index < currentBlock.probeCount
             ? currentBlock.probeTemperatures[index]
             : null;
+        const humidity =
+          currentBlock !== null && index < currentBlock.probeCount
+            ? currentBlock.probeHumidities[index]
+            : null;
         const hasTemperature = isValidNumber(temperature);
+        const hasHumidity = isValidNumber(humidity);
+        const valueLabel = hasTemperature
+          ? formatTemperature(temperature)
+          : formatHumidity(humidity);
 
         return {
-          label: `Đầu đo ${index + 1} (${formatTemperature(temperature)})`,
+          label: `Đầu đo ${index + 1} (${valueLabel})`,
           value: index,
-          disabled: !hasTemperature,
+          disabled: !hasTemperature && !hasHumidity,
         };
       }),
     [currentBlock]
@@ -248,30 +264,22 @@ export default function DashboardControls({
     }
   }, [sessionId]);
 
-  const humidityControls = (
+  const dataModeLabel = temperatureAvailable && humidityAvailable
+    ? 'Nhiệt độ + Độ ẩm'
+    : humidityAvailable
+      ? 'Chỉ độ ẩm'
+      : temperatureAvailable
+        ? 'Chỉ nhiệt độ'
+        : 'Chưa có dữ liệu';
+
+  const dataProfile = (
     <Space direction="vertical" size={8} className="dashboard-controls-section">
-      <Text strong>Hiển thị dữ liệu</Text>
-      <Segmented<'temp' | 'both' | 'humidity'>
-        block
-        options={[
-          {
-            label: 'Chỉ nhiệt độ',
-            value: 'temp',
-          },
-          {
-            label: 'Nhiệt + Ẩm',
-            value: 'both',
-            disabled: !humidityAvailable,
-          },
-          {
-            label: 'Chỉ độ ẩm',
-            value: 'humidity',
-            disabled: !humidityAvailable,
-          },
-        ]}
-        onChange={onHumidityModeChange}
-        value={humidityMode}
-      />
+      <Text strong>Kiểu dữ liệu</Text>
+      <Space wrap size={6}>
+        <Tag color={temperatureAvailable ? 'red' : 'default'}>Nhiệt độ</Tag>
+        <Tag color={humidityAvailable ? 'blue' : 'default'}>Độ ẩm</Tag>
+      </Space>
+      <Text type="secondary">{dataModeLabel}</Text>
     </Space>
   );
 
@@ -363,7 +371,7 @@ export default function DashboardControls({
 
   const content = (
     <div className="dashboard-controls-grid">
-      {humidityControls}
+      {dataProfile}
       {probeControls}
       {recordingControls}
       {statisticsPanel}
@@ -384,7 +392,7 @@ export default function DashboardControls({
 
           .dashboard-controls-grid {
             display: grid;
-            grid-template-columns: minmax(220px, 1fr) minmax(320px, 1.4fr) minmax(220px, 1fr) minmax(260px, 1fr);
+            grid-template-columns: minmax(180px, 0.8fr) minmax(320px, 1.4fr) minmax(220px, 1fr) minmax(260px, 1fr);
             gap: 12px;
             align-items: start;
           }
