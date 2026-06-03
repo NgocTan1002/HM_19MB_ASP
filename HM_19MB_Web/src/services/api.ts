@@ -64,6 +64,24 @@ export const measurementApi = {
         ),
 };
 
+export const measurementRunApi = {
+    start: (deviceId: string, metadata: SessionMetadata) =>
+        client.post<{ sessionId: number; deviceId: string; active: boolean }>(
+            '/api/measurement-runs/start',
+            { deviceId, metadata }
+        ),
+
+    stop: (deviceId: string) =>
+        client.post<{ sessionId: number | null; deviceId: string; active: boolean }>(
+            `/api/measurement-runs/${encodeURIComponent(deviceId)}/stop`
+        ),
+
+    status: (deviceId: string) =>
+        client.get<{ sessionId: number | null; deviceId: string; active: boolean }>(
+            `/api/measurement-runs/${encodeURIComponent(deviceId)}/status`
+        ),
+};
+
 export const calibrationApi = {
     calculate: (sessionId: number, input: UncertaintyInput) =>
         client.post<UncertaintyResult>(

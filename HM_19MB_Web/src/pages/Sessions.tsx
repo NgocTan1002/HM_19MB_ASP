@@ -21,7 +21,6 @@ import {
   PlusOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import { useNavigate } from 'react-router-dom';
 import SessionForm from '../components/sessions/SessionForm';
 import { useSession } from '../contexts/useSession';
 import { sessionApi } from '../services/api';
@@ -53,7 +52,6 @@ function formatDate(value: string): string {
 }
 
 export default function Sessions() {
-  const navigate = useNavigate();
   const {
     currentSessionId,
     loadingSessions,
@@ -118,10 +116,9 @@ export default function Sessions() {
 
   const handleOpenSession = useCallback(
     (sessionId: number) => {
-      setCurrentSessionId(sessionId);
-      navigate('/');
+      setSelectedSessionId(sessionId);
     },
-    [navigate, setCurrentSessionId]
+    []
   );
 
   const handleEditSession = useCallback((sessionId: number) => {
@@ -185,10 +182,9 @@ export default function Sessions() {
         const response = await sessionApi.create(values);
         const newSessionId = response.data.id;
         message.success('Đã tạo phiên đo mới');
-        setCurrentSessionId(newSessionId);
+        setSelectedSessionId(newSessionId);
         setCreateOpen(false);
         await refreshSessions();
-        navigate('/');
       } catch (error) {
         console.error('[Sessions] Create failed:', error);
         message.error('Không tạo được phiên đo');
@@ -196,7 +192,7 @@ export default function Sessions() {
         setCreating(false);
       }
     },
-    [navigate, refreshSessions, setCurrentSessionId]
+    [refreshSessions]
   );
 
   const handleUpdate = useCallback(

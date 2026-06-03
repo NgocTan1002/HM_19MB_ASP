@@ -1,20 +1,24 @@
-import { Alert, Button, Card, Col, Modal, Row, Space, Typography } from 'antd';
+import { Alert, Button, Card, Col, Input, Row, Space, Typography } from 'antd';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import DashboardControls, {
   type ChartDataPoint,
 } from '../components/dashboard/DashboardControls';
 import HealthIndicator from '../components/dashboard/HealthIndicator';
 import ProbeDataTable from '../components/dashboard/ProbeDataTable';
 import TemperatureChart from '../components/dashboard/TemperatureChart';
+import SessionForm from '../components/sessions/SessionForm';
 import { useSession } from '../contexts/useSession';
+import { measurementApi, measurementRunApi } from '../services/api';
 import {
   createHubClient,
   type HubConnectionState,
   type MeasurementHubClient,
 } from '../services/signalr';
-import { measurementApi } from '../services/api';
-import type { MeasurementBlock, MeasurementRecord } from '../types/models';
+import type {
+  MeasurementBlock,
+  MeasurementRecord,
+  SessionMetadata,
+} from '../types/models';
 
 const { Text, Title } = Typography;
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5135';
@@ -118,22 +122,25 @@ function hasHumidityHistory(points: ChartDataPoint[]): boolean {
 }
 
 export default function Dashboard() {
-  const navigate = useNavigate();
-  const { currentSessionId } = useSession();
+  const { currentSessionId, refreshSessions, setCurrentSessionId } = useSession();
   const clientRef = useRef<MeasurementHubClient | null>(null);
   const isRecordingRef = useRef(false);
   const activeRunSessionIdRef = useRef<number | null>(null);
+  const activeRunDeviceIdRef = useRef<string | null>(null);
 
   const [currentBlock, setCurrentBlock] = useState<MeasurementBlock | null>(null);
   const [lastReceivedAt, setLastReceivedAt] = useState<Date | null>(null);
   const [connectionState, setConnectionState] =
     useState<HubConnectionState>('disconnected');
   const [connectionError, setConnectionError] = useState<string | null>(null);
+  const [startError, setStartError] = useState<string | null>(null);
   const [showProbes, setShowProbes] = useState<boolean[]>(
     () => Array.from({ length: 10 }, () => true)
   );
   const [selectedProbeIndex, setSelectedProbeIndex] = useState<number | undefined>();
   const [isRecording, setIsRecording] = useState(false);
+  const [isStartingRun, setIsStartingRun] = useState(false);
+  const [deviceId, setDeviceId] = useState('u01');
   const [recordCount, setRecordCount] = useState(0);
   const [recordStartTime, setRecordStartTime] = useState<Date | null>(null);
   const [chartBuffer, setChartBuffer] = useState<ChartDataPoint[]>([]);
@@ -168,9 +175,17 @@ export default function Dashboard() {
     }
 
     const activeRunSessionId = activeRunSessionIdRef.current;
+    const activeRunDeviceId = activeRunDeviceIdRef.current;
     activeRunSessionIdRef.current = null;
+    activeRunDeviceIdRef.current = null;
 
-    if (activeRunSessionId !== null) {
+    if (activeRunDeviceId !== null) {
+      try {
+        await measurementRunApi.stop(activeRunDeviceId);
+      } catch (err: unknown) {
+        console.warn('[Dashboard] Stop measurement device run failed:', err);
+      }
+    } else if (activeRunSessionId !== null) {
       try {
         await measurementApi.stop(activeRunSessionId);
       } catch (err: unknown) {
@@ -181,90 +196,60 @@ export default function Dashboard() {
     setConnectionState('disconnected');
   }, []);
 
-  const connectClient = useCallback(async () => {
-    if (currentSessionId === null) {
-      await stopClient();
-      setCurrentBlock(null);
-      setLastReceivedAt(null);
-      setConnectionError(null);
-      setConnectionState('disconnected');
-      return;
-    }
-
-    await stopClient();
-    setConnectionError(null);
-    setConnectionState('connecting');
-
-    const client = createHubClient(API_BASE, {
-      onStateChange: setConnectionState,
-    });
-
-    clientRef.current = client;
-    client.onMeasurement(handleMeasurement);
-
-    try {
-      await measurementApi.start(currentSessionId);
-      activeRunSessionIdRef.current = currentSessionId;
-      await client.start(currentSessionId);
-    } catch (err: unknown) {
-      client.offMeasurement();
+  const connectClient = useCallback(
+    async (sessionId: number) => {
+      const previousClient = clientRef.current;
       clientRef.current = null;
-      activeRunSessionIdRef.current = null;
-      try {
-        await measurementApi.stop(currentSessionId);
-      } catch (stopErr: unknown) {
-        console.warn('[Dashboard] Rollback measurement start failed:', stopErr);
+
+      if (previousClient !== null) {
+        previousClient.offMeasurement();
+        await previousClient.stop();
       }
-      setConnectionState('disconnected');
-      setConnectionError(
-        err instanceof Error ? err.message : 'SignalR connection failed'
-      );
-    }
-  }, [currentSessionId, handleMeasurement, stopClient]);
 
-  useEffect(() => {
-    const client = clientRef.current;
-    const activeRunSessionId = activeRunSessionIdRef.current;
-    clientRef.current = null;
-    activeRunSessionIdRef.current = null;
-
-    if (client !== null) {
-      client.offMeasurement();
-      void client.stop();
-    }
-
-    if (activeRunSessionId !== null) {
-      void measurementApi.stop(activeRunSessionId);
-    }
-
-    const resetTimeoutId = window.setTimeout(() => {
-      setConnectionState('disconnected');
       setConnectionError(null);
-      setCurrentBlock(null);
-      setLastReceivedAt(null);
-      setIsRecording(false);
-      setRecordCount(0);
-      setRecordStartTime(null);
-    }, 0);
+      setConnectionState('connecting');
 
-    return () => {
-      window.clearTimeout(resetTimeoutId);
-    };
-  }, [currentSessionId]);
+      const client = createHubClient(API_BASE, {
+        onStateChange: setConnectionState,
+      });
+
+      clientRef.current = client;
+      client.onMeasurement(handleMeasurement);
+
+      try {
+        activeRunSessionIdRef.current = sessionId;
+        await client.start(sessionId);
+      } catch (err: unknown) {
+        client.offMeasurement();
+        clientRef.current = null;
+        activeRunSessionIdRef.current = null;
+        setConnectionState('disconnected');
+        setConnectionError(
+          err instanceof Error ? err.message : 'SignalR connection failed'
+        );
+        throw err;
+      }
+    },
+    [handleMeasurement]
+  );
 
   useEffect(() => {
     return () => {
       const client = clientRef.current;
       const activeRunSessionId = activeRunSessionIdRef.current;
+      const activeRunDeviceId = activeRunDeviceIdRef.current;
       clientRef.current = null;
       activeRunSessionIdRef.current = null;
+      activeRunDeviceIdRef.current = null;
 
       if (client !== null) {
         client.offMeasurement();
         void client.stop();
       }
 
-      if (activeRunSessionId !== null) {
+      if (activeRunDeviceId !== null) {
+        void measurementRunApi.stop(activeRunDeviceId);
+      } else if (activeRunSessionId !== null) {
         void measurementApi.stop(activeRunSessionId);
       }
     };
@@ -318,33 +303,73 @@ export default function Dashboard() {
   }, [currentSessionId]);
 
   const handleReconnect = useCallback(() => {
-    void connectClient();
+    const activeRunSessionId = activeRunSessionIdRef.current;
+    if (activeRunSessionId !== null) {
+      void connectClient(activeRunSessionId);
+    }
   }, [connectClient]);
 
-  const handleConnectClick = useCallback(() => {
-    if (chartBuffer.length === 0) {
-      void connectClient();
-      return;
-    }
+  const handleStartRun = useCallback(
+    async (metadata: SessionMetadata) => {
+      const normalizedDeviceId = deviceId.trim();
+      if (normalizedDeviceId.length === 0) {
+        setStartError('Vui long nhap ma thiet bi.');
+        return;
+      }
 
-    Modal.confirm({
-      title: 'Phiên này đã có dữ liệu đo',
-      content:
-        'Nếu đo tiếp, dữ liệu mới sẽ được ghi thêm vào phiên hiện tại. Nếu đây là lần đo mới, hãy tạo một phiên đo mới để tránh lẫn dữ liệu.',
-      okText: 'Đo tiếp phiên này',
-      cancelText: 'Tạo phiên mới',
-      onOk: () => {
-        void connectClient();
-      },
-      onCancel: () => {
-        navigate('/sessions');
-      },
-    });
-  }, [chartBuffer.length, connectClient, navigate]);
+      setIsStartingRun(true);
+      setStartError(null);
+      setConnectionError(null);
+      let startedDeviceId: string | null = null;
+
+      try {
+        await stopClient();
+
+        const response = await measurementRunApi.start(
+          normalizedDeviceId,
+          metadata
+        );
+        startedDeviceId = normalizedDeviceId;
+        const newSessionId = response.data.sessionId;
+
+        setCurrentSessionId(newSessionId);
+        setChartBuffer([]);
+        setCurrentBlock(null);
+        setLastReceivedAt(null);
+        setRecordCount(0);
+        setRecordStartTime(null);
+        await refreshSessions();
+        await connectClient(newSessionId);
+        activeRunDeviceIdRef.current = normalizedDeviceId;
+      } catch (err: unknown) {
+        activeRunDeviceIdRef.current = null;
+        activeRunSessionIdRef.current = null;
+
+        if (startedDeviceId !== null) {
+          void measurementRunApi.stop(startedDeviceId);
+        }
+
+        setConnectionState('disconnected');
+        setStartError(
+          err instanceof Error ? err.message : 'Khong the bat dau phien do moi'
+        );
+      } finally {
+        setIsStartingRun(false);
+      }
+    },
+    [
+      connectClient,
+      deviceId,
+      refreshSessions,
+      setCurrentSessionId,
+      stopClient,
+    ]
+  );
 
   const handleDisconnect = useCallback(() => {
     void stopClient();
     setConnectionError(null);
+    setStartError(null);
     setCurrentBlock(null);
     setLastReceivedAt(null);
     setIsRecording(false);
@@ -384,19 +409,21 @@ export default function Dashboard() {
 
   const statusDescription = useMemo(() => {
     if (currentSessionId === null) {
-      return 'Chọn phiên đo ở header, sau đó bấm Kết nối để nhận dữ liệu real-time.';
+      return 'Nhap thong tin phien do va bam Bat dau do de tao phien moi.';
     }
 
     if (connectionState === 'disconnected') {
-      return `Phiên ${currentSessionId} đã chọn. Bấm Kết nối để bắt đầu nhận dữ liệu.`;
+      return `Phien ${currentSessionId} da san sang.`;
     }
 
     if (currentBlock === null) {
-      return `Đang chờ dữ liệu từ phiên ${currentSessionId}.`;
+      return `Dang cho du lieu tu phien ${currentSessionId}.`;
     }
 
-    return `Đang theo dõi phiên ${currentSessionId}.`;
+    return `Dang theo doi phien ${currentSessionId}.`;
   }, [connectionState, currentBlock, currentSessionId]);
+
+  const isRunActive = connectionState !== 'disconnected';
 
   return (
     <section className="dashboard-page">
@@ -422,6 +449,11 @@ export default function Dashboard() {
             padding: 16px;
           }
 
+          .start-run-panel {
+            display: grid;
+            gap: 12px;
+          }
+
           @media (max-width: 767px) {
             .dashboard-page-header {
               display: grid;
@@ -444,24 +476,11 @@ export default function Dashboard() {
 
         <Space align="center" wrap>
           <Button
-            type="primary"
-            onClick={handleConnectClick}
-            disabled={
-              currentSessionId === null ||
-              connectionState === 'connected' ||
-              connectionState === 'connecting' ||
-              connectionState === 'reconnecting'
-            }
-            loading={connectionState === 'connecting'}
-          >
-            Kết nối
-          </Button>
-          <Button
             danger
             onClick={handleDisconnect}
             disabled={connectionState === 'disconnected'}
           >
-            Ngắt kết nối
+            Ngat ket noi
           </Button>
           <HealthIndicator
             connectionState={connectionState}
@@ -472,10 +491,39 @@ export default function Dashboard() {
         </Space>
       </div>
 
+      {!isRunActive && (
+        <Card className="dashboard-card" title="Bat dau phien do moi">
+          <div className="start-run-panel">
+            <Input
+              addonBefore="Device ID"
+              disabled={isStartingRun}
+              onChange={event => setDeviceId(event.target.value)}
+              placeholder="u01"
+              value={deviceId}
+            />
+            {startError !== null && (
+              <Alert
+                closable
+                message="Khong the bat dau phien do"
+                onClose={() => setStartError(null)}
+                showIcon
+                type="error"
+                description={startError}
+              />
+            )}
+            <SessionForm
+              loading={isStartingRun}
+              onSubmit={handleStartRun}
+              submitText="Bat dau do"
+            />
+          </div>
+        </Card>
+      )}
+
       {connectionError !== null && (
         <Alert
           closable
-          message="Không thể kết nối SignalR"
+          message="Khong the ket noi SignalR"
           onClose={() => setConnectionError(null)}
           showIcon
           type="error"
@@ -498,7 +546,7 @@ export default function Dashboard() {
 
       <Row gutter={[16, 16]}>
         <Col xs={24} xl={14}>
-          <Card className="dashboard-card" title="Biểu đồ real-time">
+          <Card className="dashboard-card" title="Bieu do real-time">
             <TemperatureChart
               historicalData={chartBuffer}
               height={380}
@@ -512,7 +560,7 @@ export default function Dashboard() {
         </Col>
 
         <Col xs={24} xl={10}>
-          <Card className="dashboard-card" title="Dữ liệu đầu đo">
+          <Card className="dashboard-card" title="Du lieu dau do">
             <ProbeDataTable
               block={currentBlock}
               highlightProbeIndex={selectedProbeIndex}

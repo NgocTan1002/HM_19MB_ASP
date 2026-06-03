@@ -46,6 +46,21 @@ public sealed class MeasurementIngestionService
             Ignored: false,
             Reason: null);
     }
+
+    public Task<MeasurementIngestionResult> IngestFromDeviceAsync(
+        string deviceId,
+        MeasurementBlock block)
+    {
+        if (!_runState.TryGetActiveSessionId(deviceId, out var sessionId))
+        {
+            return Task.FromResult(new MeasurementIngestionResult(
+                Id: null,
+                Ignored: true,
+                Reason: "Device does not have an active measurement session"));
+        }
+
+        return IngestAsync(sessionId, block);
+    }
 }
 
 public sealed record MeasurementIngestionResult(
