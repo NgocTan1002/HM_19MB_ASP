@@ -68,7 +68,8 @@ reader.BlockReceived += async (_, block) =>
         if (!await IsMeasurementActiveAsync())
             return;
 
-        await client.PostAsJsonAsync(measurementUrl, block);
+        var payload = CreateJsonSafeBlock(block);
+        await client.PostAsJsonAsync(measurementUrl, payload);
         Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] Gửi: T={block.AvgTemperature:F1}°C");
     }
     catch (Exception ex)
@@ -82,5 +83,38 @@ reader.Connect(portName);
 
 Console.WriteLine("Đang chạy... Nhấn Ctrl+C để dừng.");
 await Task.Delay(Timeout.Infinite);
+
+static MeasurementBlock CreateJsonSafeBlock(MeasurementBlock source)
+{
+    var block = new MeasurementBlock
+    {
+        DeviceId = source.DeviceId,
+        Timestamp = source.Timestamp,
+        ProbeCount = source.ProbeCount,
+        AvgTemperature = ToFiniteOrZero(source.AvgTemperature),
+        AvgHumidity = source.HasHumidity ? ToFiniteOrZero(source.AvgHumidity) : 0f,
+        UniformityTemp = ToFiniteOrZero(source.UniformityTemp),
+        UniformityHumidity = source.HasHumidity ? ToFiniteOrZero(source.UniformityHumidity) : 0f,
+        HasHumidity = source.HasHumidity,
+        StabilityTemperature = source.StabilityTemperature,
+        StabilityHumidity = source.StabilityHumidity,
+        StabilityRaw = source.StabilityRaw,
+    };
+
+    for (int i = 0; i < block.ProbeTemperatures.Length; i++)
+    {
+        block.ProbeTemperatures[i] =
+            i < source.ProbeCount ? ToFiniteOrZero(source.ProbeTemperatures[i]) : 0f;
+        block.ProbeHumidities[i] =
+            source.HasHumidity && i < source.ProbeCount
+                ? ToFiniteOrZero(source.ProbeHumidities[i])
+                : 0f;
+    }
+
+    return block;
+}
+
+static float ToFiniteOrZero(float value)
+    => float.IsFinite(value) ? value : 0f;
 
 record MeasurementStatus(int SessionId, bool Active);

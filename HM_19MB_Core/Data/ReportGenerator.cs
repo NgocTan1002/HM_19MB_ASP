@@ -1,4 +1,7 @@
 using HM_19MB_Core.Data;
+using DocumentFormat.OpenXml;
+using DocumentFormat.OpenXml.Packaging;
+using DocumentFormat.OpenXml.Spreadsheet;
 using MiniSoftware;
 using System;
 using System.Collections.Generic;
@@ -45,16 +48,32 @@ namespace HM_19MB_Core.Data
         }
 
 #endif
-        public static async Task<string> ExportToExcelAsync(int phienId, string outputPath)
+        public static async Task<string> ExportToExcelAsync(
+            int phienId,
+            string outputPath,
+            int kenhCount = 3)
         {
             var meta = await DatabaseService.LayPhienAsync(phienId)
                           ?? throw new InvalidOperationException("Không tìm thấy phiên hiệu chuẩn.");
-            var ketQua = await DatabaseService.LayKetQuaTheoPhienAsync(phienId);
             var calibRows = await DatabaseService.LayKetQuaHieuChuanAsync(phienId);
 
-            if (ketQua.Count == 0 && calibRows.Count == 0)
-                throw new InvalidOperationException("Không có dữ liệu đo hoặc kết quả hiệu chuẩn để xuất báo cáo.");
+            if (calibRows.Count == 0)
+                throw new InvalidOperationException("Chưa có kết quả hiệu chuẩn để xuất báo cáo Excel.");
 
+            foreach (var row in calibRows)
+            {
+                if (row.Id > 0)
+                    row.ChiTietLanDos = await DatabaseService.LayChiTietLanDoAsync(row.Id);
+            }
+
+            await HM_19MB_Core.ExcelExporter.ExportExcelToFileAsync(
+                meta,
+                calibRows,
+                kenhCount,
+                outputPath);
+            return outputPath;
+
+#if false
             using var writer = new StreamWriter(outputPath, false, System.Text.Encoding.UTF8);
 
             await GhiHeaderMetadata(writer, meta);
@@ -147,7 +166,235 @@ namespace HM_19MB_Core.Data
                 $"Thời gian kết thúc:,{ketQua.Last().ThoiGianDo:yyyy-MM-dd HH:mm:ss}");
 
             return outputPath;
+#endif
         }
+
+        private static void WriteExcelWorkbook(
+            string outputPath,
+            SessionMetadata meta,
+            List<CalibrationResultRow> calibRows,
+            List<KetQuaDo> ketQua)
+        {
+            if (File.Exists(outputPath))
+                File.Delete(outputPath);
+
+            using var document = SpreadsheetDocument.Create(
+                outputPath,
+                SpreadsheetDocumentType.Workbook);
+
+            var workbookPart = document.AddWorkbookPart();
+            workbookPart.Workbook = new Workbook();
+            var sheets = workbookPart.Workbook.AppendChild(new Sheets());
+            uint sheetId = 1;
+
+            AddSheet(workbookPart, sheets, sheetId++, "Thong tin", BuildMetadataRows(meta));
+
+            if (calibRows.Count > 0)
+                AddSheet(workbookPart, sheets, sheetId++, "Hieu chuan", BuildCalibrationRows(calibRows));
+
+            if (ketQua.Count > 0)
+            {
+                AddSheet(workbookPart, sheets, sheetId++, "Du lieu do", BuildMeasurementRows(ketQua));
+                AddSheet(workbookPart, sheets, sheetId++, "Thong ke", BuildStatisticsRows(ketQua));
+            }
+            else
+            {
+                AddSheet(workbookPart, sheets, sheetId++, "Du lieu do", new List<List<object?>>
+                {
+                    new() { "Khong co du lieu do realtime trong phien nay." }
+                });
+            }
+
+            workbookPart.Workbook.Save();
+        }
+
+        private static void AddSheet(
+            WorkbookPart workbookPart,
+            Sheets sheets,
+            uint sheetId,
+            string sheetName,
+            List<List<object?>> rows)
+        {
+            var worksheetPart = workbookPart.AddNewPart<WorksheetPart>();
+            var sheetData = new SheetData();
+            worksheetPart.Worksheet = new Worksheet(sheetData);
+
+            foreach (var rowValues in rows)
+            {
+                var row = new Row();
+                foreach (var value in rowValues)
+                    row.Append(CreateCell(value));
+                sheetData.Append(row);
+            }
+
+            sheets.Append(new Sheet
+            {
+                Id = workbookPart.GetIdOfPart(worksheetPart),
+                SheetId = sheetId,
+                Name = sheetName
+            });
+        }
+
+        private static Cell CreateCell(object? value)
+        {
+            if (value is null)
+                return new Cell { DataType = CellValues.String, CellValue = new CellValue("") };
+
+            if (value is int or long)
+                return new Cell { DataType = CellValues.Number, CellValue = new CellValue(Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture) ?? "") };
+
+            if (value is float floatValue)
+                return double.IsFinite(floatValue)
+                    ? new Cell { DataType = CellValues.Number, CellValue = new CellValue(floatValue.ToString(System.Globalization.CultureInfo.InvariantCulture)) }
+                    : new Cell { DataType = CellValues.String, CellValue = new CellValue("") };
+
+            if (value is double doubleValue)
+                return double.IsFinite(doubleValue)
+                    ? new Cell { DataType = CellValues.Number, CellValue = new CellValue(doubleValue.ToString(System.Globalization.CultureInfo.InvariantCulture)) }
+                    : new Cell { DataType = CellValues.String, CellValue = new CellValue("") };
+
+            if (value is DateTime dateTime)
+                return new Cell { DataType = CellValues.String, CellValue = new CellValue(dateTime.ToString("yyyy-MM-dd HH:mm:ss")) };
+
+            return new Cell { DataType = CellValues.String, CellValue = new CellValue(value.ToString() ?? "") };
+        }
+
+        private static List<List<object?>> BuildMetadataRows(SessionMetadata meta)
+            => new()
+            {
+                new() { "Ten thiet bi", meta.TenThietBi },
+                new() { "Ky hieu", meta.KyHieu },
+                new() { "So hieu", meta.SoHieu },
+                new() { "So tem", meta.SoTem },
+                new() { "Noi san xuat", meta.NoiSanXuat },
+                new() { "Nam san xuat", meta.NamSanXuat },
+                new() { "Don vi su dung", meta.DonViSuDung },
+                new() { "Phuong phap", meta.PhuongPhap },
+                new() { "Ngay hieu chuan", meta.NgayHieuChuan.ToString("dd/MM/yyyy") },
+                new() { "Nhiet do moi truong", meta.NhietDoMoiTruong },
+                new() { "Do am tuong doi", meta.DoAmTuongDoi },
+                new() { "Dac tinh ky thuat", meta.DacTinhKyThuat },
+                new() { "Thiet bi chuan", meta.ThietBiChuan }
+            };
+
+        private static List<List<object?>> BuildCalibrationRows(List<CalibrationResultRow> calibRows)
+        {
+            var rows = new List<List<object?>>
+            {
+                new()
+                {
+                    "STT", "Gia tri dat", "Chi thi TB",
+                    "Kenh 1", "Kenh 2", "Kenh 3", "Kenh 4", "Kenh 5",
+                    "Kenh 6", "Kenh 7", "Kenh 8", "Kenh 9", "Kenh 10",
+                    "t_ch", "Delta t", "Do on dinh", "Do dong deu", "U",
+                    "u_ch", "u_bk", "So kenh", "So lan do", "Phuong phap B"
+                }
+            };
+
+            foreach (var row in calibRows)
+            {
+                var values = new List<object?>
+                {
+                    row.STT,
+                    ToExcelNumber(row.GiaTriDat),
+                    ToExcelNumber(row.GiaTriChiThi)
+                };
+
+                for (int i = 0; i < 10; i++)
+                    values.Add(ToExcelNumber(row.Kenh[i]));
+
+                values.AddRange(new object?[]
+                {
+                    ToExcelNumber(row.GiaTriTrungBinh),
+                    ToExcelNumber(row.SoHieuChinh),
+                    ToExcelNumber(row.DoOnDinh),
+                    ToExcelNumber(row.DoDongDeu),
+                    ToExcelNumber(row.DoKhongDamBao),
+                    ToExcelNumber(row.Uch),
+                    ToExcelNumber(row.Ubk),
+                    row.SoKenh,
+                    row.SoLanDo,
+                    row.PhuongPhapB
+                });
+                rows.Add(values);
+            }
+
+            return rows;
+        }
+
+        private static List<List<object?>> BuildMeasurementRows(List<KetQuaDo> ketQua)
+        {
+            var header = new List<object?> { "Thoi gian" };
+            for (int i = 1; i <= 10; i++)
+            {
+                header.Add($"Nhiet do {i}");
+                header.Add($"Do am {i}");
+            }
+            header.AddRange(new object?[]
+            {
+                "TB nhiet", "TB do am", "Do dong deu nhiet",
+                "Do dong deu am", "On dinh nhiet", "On dinh am"
+            });
+
+            var rows = new List<List<object?>> { header };
+            foreach (var kq in ketQua)
+            {
+                var values = new List<object?> { kq.ThoiGianDo };
+                for (int i = 0; i < 10; i++)
+                {
+                    values.Add(kq.HasNhietDo[i] ? kq.NhietDo[i] : null);
+                    values.Add(kq.HasDoAm[i] ? kq.DoAm[i] : null);
+                }
+                values.AddRange(new object?[]
+                {
+                    kq.NhietDoTb,
+                    kq.HasDoAmTb ? kq.DoAmTb : null,
+                    kq.DoDongDeuNhiet,
+                    kq.HasDoDongDeuAm ? kq.DoDongDeuAm : null,
+                    kq.HasDoOnDinhNhiet ? kq.DoOnDinhNhiet : null,
+                    kq.HasDoOnDinhAm ? kq.DoOnDinhAm : null
+                });
+                rows.Add(values);
+            }
+
+            return rows;
+        }
+
+        private static List<List<object?>> BuildStatisticsRows(List<KetQuaDo> ketQua)
+        {
+            var rows = new List<List<object?>>
+            {
+                new()
+                {
+                    "Dau do", "Nhiet do TB", "Nhiet do Min", "Nhiet do Max",
+                    "Do am TB", "Do am Min", "Do am Max", "So lan do"
+                }
+            };
+
+            foreach (var stat in TinhThongKeDauDo(ketQua))
+            {
+                rows.Add(new List<object?>
+                {
+                    stat.SoDauDo,
+                    stat.NhietDoTb,
+                    stat.NhietDoMin,
+                    stat.NhietDoMax,
+                    stat.HasDoAm ? stat.DoAmTb : null,
+                    stat.HasDoAm ? stat.DoAmMin : null,
+                    stat.HasDoAm ? stat.DoAmMax : null,
+                    stat.SoLanDo
+                });
+            }
+
+            rows.Add(new List<object?>());
+            rows.Add(new List<object?> { "Tong so lan do", ketQua.Count });
+            rows.Add(new List<object?> { "Thoi gian bat dau", ketQua.First().ThoiGianDo });
+            rows.Add(new List<object?> { "Thoi gian ket thuc", ketQua.Last().ThoiGianDo });
+            return rows;
+        }
+
+        private static double? ToExcelNumber(double value)
+            => double.IsFinite(value) ? value : null;
 
         public static async Task<string> ExportToWordAsync(int phienId, string outputPath)
         {

@@ -15,6 +15,7 @@ namespace HM_19MB_Core
         public float AvgHumidity { get; set; }
         public float UniformityTemp { get; set; }
         public float UniformityHumidity { get; set; }
+        public bool HasHumidity { get; set; }
         public string StabilityTemperature { get; set; } = "---";
         public string StabilityHumidity { get; set; } = "---";
         public string StabilityRaw { get; set; } = "---";
@@ -107,6 +108,7 @@ namespace HM_19MB_Core
 
                 var block = new MeasurementBlock();
                 block.ProbeCount = probeCount;
+                block.HasHumidity = hasHumidity;
                 Array.Fill(block.ProbeTemperatures, float.NaN);
                 Array.Fill(block.ProbeHumidities, float.NaN);
                 

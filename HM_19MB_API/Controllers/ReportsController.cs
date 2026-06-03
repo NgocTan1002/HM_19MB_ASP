@@ -11,7 +11,7 @@ namespace HM_19MB_API.Controllers
         public async Task<IActionResult> Excel(int sessionId, [FromQuery] int kenhCount = 3)
         {
             var tempFile = Path.GetTempFileName() + ".xlsx";
-            await ReportGenerator.ExportToExcelAsync(sessionId, tempFile);
+            await ReportGenerator.ExportToExcelAsync(sessionId, tempFile, kenhCount);
             var bytes = await System.IO.File.ReadAllBytesAsync(tempFile);
             System.IO.File.Delete(tempFile);
             return File(bytes,

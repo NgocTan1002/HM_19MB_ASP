@@ -1,9 +1,7 @@
-using HM_19MB_API.Hubs;
 using HM_19MB_API.Services;
 using HM_19MB_Core;
 using HM_19MB_Core.Data;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.SignalR;
 
 namespace HM_19MB_API.Controllers
 {
@@ -11,14 +9,14 @@ namespace HM_19MB_API.Controllers
     [Route("api/sessions/{sessionId}/[controller]")]
     public class MeasurementsController : Controller
     {
-        private readonly IHubContext<MeasurementHub> _hub;
+        private readonly MeasurementIngestionService _ingestion;
         private readonly MeasurementRunState _runState;
 
         public MeasurementsController(
-            IHubContext<MeasurementHub> hub,
+            MeasurementIngestionService ingestion,
             MeasurementRunState runState)
         {
-            _hub = hub;
+            _ingestion = ingestion;
             _runState = runState;
         }
 
@@ -47,25 +45,19 @@ namespace HM_19MB_API.Controllers
             int sessionId,
             [FromBody] MeasurementBlock block)
         {
-            if (!_runState.IsActive(sessionId))
+            var result = await _ingestion.IngestAsync(sessionId, block);
+
+            if (result.Ignored)
             {
                 return Ok(new
                 {
-                    id = (int?)null,
+                    id = result.Id,
                     ignored = true,
-                    reason = "Measurement session is not active"
+                    reason = result.Reason
                 });
             }
 
-            await DatabaseService.EnsureSchemaAsync();
-            var id = await DatabaseService.LuuKetQuaDoAsync(
-                sessionId, block, includeHumidity: true);
-
-            await _hub.Clients
-                .Group($"Session_{sessionId}")
-                .SendAsync("MeasurementReceived", block);
-
-            return Ok(new { id });
+            return Ok(new { id = result.Id });
         }
 
         [HttpGet]
