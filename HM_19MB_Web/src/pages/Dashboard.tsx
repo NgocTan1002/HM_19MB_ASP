@@ -1,6 +1,5 @@
 import {
   Alert,
-  AutoComplete,
   Button,
   Card,
   Col,
@@ -21,42 +20,17 @@ import { useSession } from '../contexts/useSession';
 import './Dashboard.css';
 
 const { Text, Title } = Typography;
-const DEVICE_ID_HISTORY_KEY = 'hm19mb.deviceIdHistory';
-const DEVICE_ID_HISTORY_LIMIT = 8;
 type ConnectionPanelMode = 'create' | 'connect';
-
-function readDeviceIdHistory(): string[] {
-  if (typeof window === 'undefined') {
-    return [];
-  }
-
-  try {
-    const parsed = JSON.parse(
-      window.localStorage.getItem(DEVICE_ID_HISTORY_KEY) ?? '[]'
-    );
-    return Array.isArray(parsed)
-      ? parsed.filter((item): item is string => typeof item === 'string')
-      : [];
-  } catch {
-    return [];
-  }
-}
-
-function normalizeDeviceId(value: string): string {
-  return value.trim();
-}
 
 export default function Dashboard() {
   const { currentSessionId } = useSession();
   const [connectionPanelMode, setConnectionPanelMode] =
     useState<ConnectionPanelMode | null>(null);
-  const [deviceIdHistory, setDeviceIdHistory] = useState<string[]>(readDeviceIdHistory);
   const {
     chartBuffer,
     connectionError,
     connectionState,
     currentBlock,
-    deviceId,
     handleDisconnect,
     handleReconnect,
     handleStartRun,
@@ -64,7 +38,6 @@ export default function Dashboard() {
     isStartingRun,
     lastReceivedAt,
     setConnectionError,
-    setDeviceId,
     setStartError,
     showHumidity,
     showTemperature,
@@ -92,30 +65,6 @@ export default function Dashboard() {
       ? 'Bat dau phien do moi'
       : 'Ket noi phien dang chon';
 
-  const rememberDeviceId = useCallback((value: string) => {
-    const normalized = normalizeDeviceId(value);
-    if (normalized.length === 0 || typeof window === 'undefined') {
-      return normalized;
-    }
-
-    const nextHistory = [
-      normalized,
-      ...deviceIdHistory.filter(item => item !== normalized),
-    ].slice(0, DEVICE_ID_HISTORY_LIMIT);
-
-    setDeviceIdHistory(nextHistory);
-    window.localStorage.setItem(
-      DEVICE_ID_HISTORY_KEY,
-      JSON.stringify(nextHistory)
-    );
-
-    return normalized;
-  }, [deviceIdHistory]);
-
-  const deviceIdOptions = useMemo(
-    () => deviceIdHistory.map(value => ({ value })),
-    [deviceIdHistory]
-  );
   const headerActionsTarget =
     typeof document === 'undefined'
       ? null
@@ -136,18 +85,16 @@ export default function Dashboard() {
   }, [isStartingRun]);
 
   const handleReconnectFromPanel = useCallback(() => {
-    rememberDeviceId(deviceId);
     handleReconnect();
     setConnectionPanelMode(null);
-  }, [deviceId, handleReconnect, rememberDeviceId]);
+  }, [handleReconnect]);
 
   const handleStartRunFromPanel = useCallback(
     async (...args: Parameters<typeof handleStartRun>) => {
-      rememberDeviceId(deviceId);
       await handleStartRun(...args);
       setConnectionPanelMode(null);
     },
-    [deviceId, handleStartRun, rememberDeviceId]
+    [handleStartRun]
   );
 
   return (
@@ -225,18 +172,9 @@ export default function Dashboard() {
         {connectionPanelMode === 'connect' ? (
           <div className="start-run-panel">
             <Text type="secondary">
-              Phien {currentSessionId} da duoc chon. Nhap Device ID dung voi
-              Agent dang chay, sau do bam Ket noi lai de ghi du lieu moi vao
-              phien nay.
+              Phien {currentSessionId} da duoc chon. He thong se tu nhan thiet
+              bi tu frame dau tien ma Agent hoac MQTT gui len.
             </Text>
-            <AutoComplete
-              options={deviceIdOptions}
-              onBlur={() => setDeviceId(normalizeDeviceId(deviceId))}
-              onChange={setDeviceId}
-              placeholder="u01"
-              value={deviceId}
-              style={{ width: '100%' }}
-            />
             {connectionError !== null && (
               <Alert
                 closable
@@ -253,15 +191,6 @@ export default function Dashboard() {
           </div>
         ) : connectionPanelMode === 'create' ? (
           <div className="start-run-panel">
-            <AutoComplete
-              disabled={isStartingRun}
-              options={deviceIdOptions}
-              onBlur={() => setDeviceId(normalizeDeviceId(deviceId))}
-              onChange={setDeviceId}
-              placeholder="u01"
-              value={deviceId}
-              style={{ width: '100%' }}
-            />
             {startError !== null && (
               <Alert
                 closable
@@ -302,7 +231,7 @@ export default function Dashboard() {
           <Card className="dashboard-card" title="Bieu do real-time">
             <TemperatureChart
               historicalData={chartBuffer}
-              height={380}
+              height={560}
               newBlock={null}
               showTemperature={showTemperature}
               showHumidity={showHumidity}

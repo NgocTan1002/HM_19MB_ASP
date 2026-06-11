@@ -8,12 +8,12 @@ namespace HM_19MB_Core
     public class SerialReader : IDisposable
     {
         private const int FixedTenProbeFullFrameLength = 115;
-        private const int FixedTenProbeTempOnlyFrameLength = 64;
+        private const int IdleFrameParseDelayMs = 15_000;
 
         private SerialPort? _port;
         private readonly StringBuilder _buffer = new StringBuilder();
         private readonly object _bufferLock = new object();
-        private System.Threading.Timer? _tempOnlyFrameTimer;
+        private System.Threading.Timer? _idleFrameTimer;
         private bool _disposed = false;
 
         public event EventHandler<MeasurementBlock>? BlockReceived;
@@ -67,8 +67,8 @@ namespace HM_19MB_Core
                 string bufStr;
                 lock (_bufferLock)
                 {
-                    _tempOnlyFrameTimer?.Dispose();
-                    _tempOnlyFrameTimer = null;
+                    _idleFrameTimer?.Dispose();
+                    _idleFrameTimer = null;
                     _buffer.Append(incoming);
                     bufStr = _buffer.ToString();
                 }
@@ -88,7 +88,7 @@ namespace HM_19MB_Core
                 // Some devices send a fixed-size frame and then stop transmitting,
                 // without sending ';', CR or LF. The 10-probe frames are 115 bytes
                 // with humidity and 64 bytes in temperature-only mode.
-                while (TryExtractFixedLengthFrame(ref bufStr, allowTempOnlyFrame: false, out string blockData))
+                while (TryExtractFixedLengthFrame(ref bufStr, out string blockData))
                 {
                     ParseAndRaise(blockData);
                 }
@@ -98,9 +98,13 @@ namespace HM_19MB_Core
                     _buffer.Clear();
                     _buffer.Append(bufStr);
 
-                    if (_buffer.Length >= FixedTenProbeTempOnlyFrameLength)
+                    if (_buffer.Length > 0)
                     {
-                        _tempOnlyFrameTimer = new System.Threading.Timer(ParseBufferedTempOnlyFrameAfterIdle, null, 150, Timeout.Infinite);
+                        _idleFrameTimer = new System.Threading.Timer(
+                            ParseBufferedFrameAfterIdle,
+                            null,
+                            IdleFrameParseDelayMs,
+                            Timeout.Infinite);
                     }
                 }
             }
@@ -111,22 +115,22 @@ namespace HM_19MB_Core
             }
         }
 
-        private void ParseBufferedTempOnlyFrameAfterIdle(object? state)
+        private void ParseBufferedFrameAfterIdle(object? state)
         {
             string? blockData = null;
 
             lock (_bufferLock)
             {
                 string bufStr = _buffer.ToString();
-                if (TryExtractFixedLengthFrame(ref bufStr, allowTempOnlyFrame: true, out string extracted))
+                int startIdx = bufStr.IndexOf('u');
+                if (startIdx >= 0)
                 {
-                    blockData = extracted;
+                    blockData = bufStr.Substring(startIdx);
                     _buffer.Clear();
-                    _buffer.Append(bufStr);
                 }
 
-                _tempOnlyFrameTimer?.Dispose();
-                _tempOnlyFrameTimer = null;
+                _idleFrameTimer?.Dispose();
+                _idleFrameTimer = null;
             }
 
             if (!string.IsNullOrWhiteSpace(blockData))
@@ -163,7 +167,7 @@ namespace HM_19MB_Core
             return terminatorIdx;
         }
 
-        private static bool TryExtractFixedLengthFrame(ref string data, bool allowTempOnlyFrame, out string blockData)
+        private static bool TryExtractFixedLengthFrame(ref string data, out string blockData)
         {
             blockData = string.Empty;
 
@@ -179,25 +183,11 @@ namespace HM_19MB_Core
             if (startIdx > 0)
                 data = data.Substring(startIdx);
 
-            if (data.Length < FixedTenProbeTempOnlyFrameLength)
+            if (data.Length < FixedTenProbeFullFrameLength)
                 return false;
 
-            int frameLength;
-            if (data.Length >= FixedTenProbeFullFrameLength)
-            {
-                frameLength = FixedTenProbeFullFrameLength;
-            }
-            else if (allowTempOnlyFrame)
-            {
-                frameLength = FixedTenProbeTempOnlyFrameLength;
-            }
-            else
-            {
-                return false;
-            }
-
-            blockData = data.Substring(0, frameLength);
-            data = data.Substring(frameLength);
+            blockData = data.Substring(0, FixedTenProbeFullFrameLength);
+            data = data.Substring(FixedTenProbeFullFrameLength);
             return true;
         }
 
@@ -216,7 +206,7 @@ namespace HM_19MB_Core
         {
             if (!_disposed)
             {
-                _tempOnlyFrameTimer?.Dispose();
+                _idleFrameTimer?.Dispose();
                 Disconnect();
                 _port?.Dispose();
                 _disposed = true;

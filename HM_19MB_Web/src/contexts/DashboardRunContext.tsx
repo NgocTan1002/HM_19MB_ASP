@@ -32,14 +32,12 @@ interface DashboardRunContextValue {
   connectionError: string | null;
   startError: string | null;
   isStartingRun: boolean;
-  deviceId: string;
   chartBuffer: ChartDataPoint[];
   showTemperature: boolean;
   showHumidity: boolean;
   isRunActive: boolean;
   setConnectionError: (error: string | null) => void;
   setStartError: (error: string | null) => void;
-  setDeviceId: (deviceId: string) => void;
   handleStartRun: (metadata: SessionMetadata) => Promise<void>;
   handleDisconnect: () => void;
   handleReconnect: () => void;
@@ -58,7 +56,7 @@ function isValidNumber(value: number | undefined | null): value is number {
 }
 
 function toNullableNumber(value: number | undefined): number | null {
-  return isValidNumber(value) ? value : null;
+  return isValidNumber(value) && value !== 0 ? value : null;
 }
 
 function blockToChartDataPoint(block: MeasurementBlock): ChartDataPoint {
@@ -96,10 +94,10 @@ function recordToChartPoint(record: MeasurementRecord): ChartDataPoint {
   return {
     timestamp: record.thoiGianDo,
     temps: Array.from({ length: 10 }, (_, index) =>
-      record.hasNhietDo[index] ? record.nhietDo[index] : null
+      record.hasNhietDo[index] ? toNullableNumber(record.nhietDo[index]) : null
     ),
     hums: Array.from({ length: 10 }, (_, index) =>
-      record.hasDoAm[index] ? record.doAm[index] : null
+      record.hasDoAm[index] ? toNullableNumber(record.doAm[index]) : null
     ),
     avgTemp: record.nhietDoTb,
     avgHum: record.hasDoAmTb ? record.doAmTb : null,
@@ -112,7 +110,7 @@ function hasTemperatureData(block: MeasurementBlock | null): boolean {
   }
 
   return block.probeTemperatures.some((value, index) =>
-    index < block.probeCount && isValidNumber(value)
+    index < block.probeCount && toNullableNumber(value) !== null
   );
 }
 
@@ -122,19 +120,19 @@ function hasHumidityData(block: MeasurementBlock | null): boolean {
   }
 
   return block.probeHumidities.some((value, index) =>
-    index < block.probeCount && isValidNumber(value)
+    index < block.probeCount && toNullableNumber(value) !== null
   );
 }
 
 function hasTemperatureHistory(points: ChartDataPoint[]): boolean {
   return points.some(point =>
-    point.temps.some(value => value !== null && !Number.isNaN(value))
+    point.temps.some(value => toNullableNumber(value ?? undefined) !== null)
   );
 }
 
 function hasHumidityHistory(points: ChartDataPoint[]): boolean {
   return points.some(point =>
-    point.hums.some(value => value !== null && !Number.isNaN(value))
+    point.hums.some(value => toNullableNumber(value ?? undefined) !== null)
   );
 }
 
@@ -143,7 +141,6 @@ export function DashboardRunProvider({ children }: DashboardRunProviderProps) {
   const clientRef = useRef<MeasurementHubClient | null>(null);
   const currentSessionIdRef = useRef<number | null>(currentSessionId);
   const activeRunSessionIdRef = useRef<number | null>(null);
-  const activeRunDeviceIdRef = useRef<string | null>(null);
 
   const [currentBlock, setCurrentBlock] = useState<MeasurementBlock | null>(null);
   const [lastReceivedAt, setLastReceivedAt] = useState<Date | null>(null);
@@ -152,7 +149,6 @@ export function DashboardRunProvider({ children }: DashboardRunProviderProps) {
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [startError, setStartError] = useState<string | null>(null);
   const [isStartingRun, setIsStartingRun] = useState(false);
-  const [deviceId, setDeviceId] = useState('u01');
   const [chartBuffer, setChartBuffer] = useState<ChartDataPoint[]>([]);
 
   useEffect(() => {
@@ -176,17 +172,9 @@ export function DashboardRunProvider({ children }: DashboardRunProviderProps) {
     }
 
     const activeRunSessionId = activeRunSessionIdRef.current;
-    const activeRunDeviceId = activeRunDeviceIdRef.current;
     activeRunSessionIdRef.current = null;
-    activeRunDeviceIdRef.current = null;
 
-    if (activeRunDeviceId !== null) {
-      try {
-        await measurementRunApi.stop(activeRunDeviceId);
-      } catch (err: unknown) {
-        console.warn('[Dashboard] Stop measurement device run failed:', err);
-      }
-    } else if (activeRunSessionId !== null) {
+    if (activeRunSessionId !== null) {
       try {
         await measurementApi.stop(activeRunSessionId);
       } catch (err: unknown) {
@@ -238,19 +226,15 @@ export function DashboardRunProvider({ children }: DashboardRunProviderProps) {
     return () => {
       const client = clientRef.current;
       const activeRunSessionId = activeRunSessionIdRef.current;
-      const activeRunDeviceId = activeRunDeviceIdRef.current;
       clientRef.current = null;
       activeRunSessionIdRef.current = null;
-      activeRunDeviceIdRef.current = null;
 
       if (client !== null) {
         client.offMeasurement();
         void client.stop();
       }
 
-      if (activeRunDeviceId !== null) {
-        void measurementRunApi.stop(activeRunDeviceId);
-      } else if (activeRunSessionId !== null) {
+      if (activeRunSessionId !== null) {
         void measurementApi.stop(activeRunSessionId);
       }
     };
@@ -329,15 +313,9 @@ export function DashboardRunProvider({ children }: DashboardRunProviderProps) {
     async function reconnect() {
       const targetSessionId =
         currentSessionIdRef.current ?? activeRunSessionIdRef.current;
-      const normalizedDeviceId = deviceId.trim();
 
       if (targetSessionId === null) {
         setConnectionError('Chua chon phien do de ket noi lai.');
-        return;
-      }
-
-      if (normalizedDeviceId.length === 0) {
-        setConnectionError('Vui long nhap ma thiet bi de ket noi lai.');
         return;
       }
 
@@ -352,9 +330,8 @@ export function DashboardRunProvider({ children }: DashboardRunProviderProps) {
           await stopClient();
         }
 
-        await measurementRunApi.startExisting(normalizedDeviceId, targetSessionId);
+        await measurementRunApi.startExisting(targetSessionId);
         activeRunSessionIdRef.current = targetSessionId;
-        activeRunDeviceIdRef.current = normalizedDeviceId;
         await connectClient(targetSessionId);
       } catch (err: unknown) {
         activeRunSessionIdRef.current = null;
@@ -366,33 +343,21 @@ export function DashboardRunProvider({ children }: DashboardRunProviderProps) {
     }
 
     void reconnect();
-  }, [connectClient, deviceId, stopClient]);
+  }, [connectClient, stopClient]);
 
   const handleStartRun = useCallback(
     async (metadata: SessionMetadata) => {
-      const normalizedDeviceId = deviceId.trim();
-      if (normalizedDeviceId.length === 0) {
-        setStartError('Vui long nhap ma thiet bi.');
-        return;
-      }
-
       setIsStartingRun(true);
       setStartError(null);
       setConnectionError(null);
-      let startedDeviceId: string | null = null;
 
       try {
         await stopClient();
 
-        const response = await measurementRunApi.start(
-          normalizedDeviceId,
-          metadata
-        );
-        startedDeviceId = normalizedDeviceId;
+        const response = await measurementRunApi.start(metadata);
         const newSessionId = response.data.sessionId;
 
         activeRunSessionIdRef.current = newSessionId;
-        activeRunDeviceIdRef.current = normalizedDeviceId;
         setCurrentSessionId(newSessionId);
         setChartBuffer([]);
         setCurrentBlock(null);
@@ -400,12 +365,7 @@ export function DashboardRunProvider({ children }: DashboardRunProviderProps) {
         await refreshSessions();
         await connectClient(newSessionId);
       } catch (err: unknown) {
-        activeRunDeviceIdRef.current = null;
         activeRunSessionIdRef.current = null;
-
-        if (startedDeviceId !== null) {
-          void measurementRunApi.stop(startedDeviceId);
-        }
 
         setConnectionState('disconnected');
         setStartError(
@@ -417,7 +377,6 @@ export function DashboardRunProvider({ children }: DashboardRunProviderProps) {
     },
     [
       connectClient,
-      deviceId,
       refreshSessions,
       setCurrentSessionId,
       stopClient,
@@ -446,14 +405,12 @@ export function DashboardRunProvider({ children }: DashboardRunProviderProps) {
       connectionError,
       startError,
       isStartingRun,
-      deviceId,
       chartBuffer,
       showTemperature,
       showHumidity,
       isRunActive,
       setConnectionError,
       setStartError,
-      setDeviceId,
       handleStartRun,
       handleDisconnect,
       handleReconnect,
@@ -463,7 +420,6 @@ export function DashboardRunProvider({ children }: DashboardRunProviderProps) {
       connectionError,
       connectionState,
       currentBlock,
-      deviceId,
       handleDisconnect,
       handleReconnect,
       handleStartRun,

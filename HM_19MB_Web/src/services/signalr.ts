@@ -1,7 +1,7 @@
 import * as signalR from '@microsoft/signalr';
 import type { MeasurementBlock } from '../types/models';
 
-const RETRY_DELAYS = [0, 2000, 5000, 10000];
+const RETRY_DELAYS = [0, 2000, 5000, 15000];
 
 export type HubConnectionState =
   | 'connecting'

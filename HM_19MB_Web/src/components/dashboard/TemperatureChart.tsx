@@ -32,6 +32,7 @@ interface TemperatureChartProps {
 interface HistoricalChartPoint {
   timestamp: string;
   temps: (number | null)[];
+  hums: (number | null)[];
   avgTemp: number;
   avgHum: number | null;
 }
@@ -41,6 +42,7 @@ interface ChartPoint {
   avgTemperature: number | null;
   avgHumidity: number | null;
   probeTemperatures: Array<number | null>;
+  probeHumidities: Array<number | null>;
 }
 
 interface FlatChartPoint {
@@ -48,6 +50,7 @@ interface FlatChartPoint {
   avgTemperature: number | null;
   avgHumidity: number | null;
   [key: `probeTemp${number}`]: number | null;
+  [key: `probeHum${number}`]: number | null;
 }
 
 type ChartTooltipProps = TooltipContentProps;
@@ -75,7 +78,7 @@ function isValidNumber(value: number | undefined): value is number {
 }
 
 function toNullableNumber(value: number | undefined): number | null {
-  return isValidNumber(value) ? value : null;
+  return isValidNumber(value) && value !== 0 ? value : null;
 }
 
 function parseTimestamp(timestamp: string): number {
@@ -102,6 +105,11 @@ function createChartPoint(block: MeasurementBlock): ChartPoint {
         ? toNullableNumber(block.probeTemperatures[index])
         : null
     ),
+    probeHumidities: Array.from({ length: 10 }, (_, index) =>
+      index < block.probeCount
+        ? toNullableNumber(block.probeHumidities[index])
+        : null
+    ),
   };
 }
 
@@ -111,7 +119,10 @@ function createChartPointFromHistory(point: HistoricalChartPoint): ChartPoint {
     avgTemperature: toNullableNumber(point.avgTemp),
     avgHumidity: point.avgHum,
     probeTemperatures: Array.from({ length: 10 }, (_, index) =>
-      point.temps[index] ?? null
+      toNullableNumber(point.temps[index] ?? undefined)
+    ),
+    probeHumidities: Array.from({ length: 10 }, (_, index) =>
+      toNullableNumber(point.hums[index] ?? undefined)
     ),
   };
 }
@@ -125,6 +136,7 @@ function flattenChartPoint(point: ChartPoint): FlatChartPoint {
 
   for (let index = 0; index < 10; index += 1) {
     flatPoint[`probeTemp${index}`] = point.probeTemperatures[index];
+    flatPoint[`probeHum${index}`] = point.probeHumidities[index];
   }
 
   return flatPoint;
@@ -182,7 +194,7 @@ function CustomTooltip({ active, payload, label }: ChartTooltipProps) {
       <div className="temperature-chart-tooltip-list">
         {payload.map(entry => {
           const key = `${entry.dataKey ?? entry.name}`;
-          const isHumidity = key.includes('Humidity');
+          const isHumidity = key.includes('Humidity') || key.startsWith('probeHum');
           const displayValue = isHumidity
             ? formatHumidity(entry.value)
             : formatTemperature(entry.value);
@@ -302,6 +314,20 @@ export default function TemperatureChart({
 
   const temperatureDomain = useMemo(
     () => getTemperatureDomain(chartData),
+    [chartData]
+  );
+  const visibleTemperatureProbeIndexes = useMemo(
+    () =>
+      Array.from({ length: 10 }, (_item, index) => index).filter(index =>
+        chartData.some(point => typeof point[`probeTemp${index}`] === 'number')
+      ),
+    [chartData]
+  );
+  const visibleHumidityProbeIndexes = useMemo(
+    () =>
+      Array.from({ length: 10 }, (_item, index) => index).filter(index =>
+        chartData.some(point => typeof point[`probeHum${index}`] === 'number')
+      ),
     [chartData]
   );
   const showPointDots = chartData.length > 0 && chartData.length <= 20;
@@ -456,17 +482,17 @@ export default function TemperatureChart({
           <Legend content={renderLegend} />
 
           {showTemperature &&
-            Array.from({ length: 10 }, (_, index) => {
+            visibleTemperatureProbeIndexes.map(index => {
               return (
                 <Line
                   connectNulls
                   dataKey={`probeTemp${index}`}
-                  dot={showPointDots ? { r: 2 } : false}
+                  dot={showPointDots ? { r: 2.5 } : false}
                   isAnimationActive={false}
                   key={`probe-temp-${index}`}
-                  name={`Đầu đo ${index + 1}`}
+                  name={`Dau do ${index + 1}`}
                   stroke={PROBE_COLORS[index]}
-                  strokeWidth={1.5}
+                  strokeWidth={3}
                   type="monotone"
                   yAxisId="temperature"
                 />
@@ -488,15 +514,41 @@ export default function TemperatureChart({
           )}
 
           {showHumidity && (
+            <>
+              {visibleHumidityProbeIndexes.map(index => (
+                <Line
+                  activeDot={false}
+                  connectNulls
+                  dataKey={`probeHum${index}`}
+                  dot={false}
+                  isAnimationActive={false}
+                  key={`probe-hum-${index}`}
+                  legendType="none"
+                  name={`Do am ${index + 1}`}
+                  stroke={PROBE_COLORS[index]}
+                  strokeDasharray="6 5"
+                  strokeOpacity={0.9}
+                  strokeWidth={2.2}
+                  type="monotone"
+                  yAxisId="humidity"
+                />
+              ))}
+            </>
+          )}
+
+          {showHumidity && (
             <Line
+              activeDot={false}
               connectNulls
               dataKey="avgHumidity"
-              dot={showPointDots ? { r: 2.5 } : false}
+              dot={false}
               isAnimationActive={false}
-              name="Trung bình độ ẩm"
-              stroke="#1677ff"
-              strokeDasharray="6 4"
-              strokeWidth={2}
+              legendType="none"
+              name="Trung binh do am"
+              stroke={averageLineColor}
+              strokeDasharray="8 5"
+              strokeOpacity={0.9}
+              strokeWidth={2.5}
               type="monotone"
               yAxisId="humidity"
             />

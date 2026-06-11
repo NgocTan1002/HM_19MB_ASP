@@ -6,6 +6,8 @@ public sealed class MeasurementRunState
 {
     private readonly ConcurrentDictionary<int, bool> _activeSessions = new();
     private readonly ConcurrentDictionary<string, int> _activeDeviceSessions = new();
+    private readonly object _pendingLock = new();
+    private int? _pendingAutoSessionId;
 
     public bool IsActive(int sessionId)
         => _activeSessions.TryGetValue(sessionId, out var active) && active;
@@ -14,7 +16,27 @@ public sealed class MeasurementRunState
         => _activeSessions[sessionId] = true;
 
     public void Stop(int sessionId)
-        => _activeSessions[sessionId] = false;
+    {
+        _activeSessions[sessionId] = false;
+
+        lock (_pendingLock)
+        {
+            if (_pendingAutoSessionId == sessionId)
+            {
+                _pendingAutoSessionId = null;
+            }
+        }
+    }
+
+    public void StartAutoSession(int sessionId)
+    {
+        lock (_pendingLock)
+        {
+            _pendingAutoSessionId = sessionId;
+        }
+
+        Start(sessionId);
+    }
 
     public void StartDeviceSession(string deviceId, int sessionId)
     {
@@ -25,6 +47,14 @@ public sealed class MeasurementRunState
         }
 
         _activeDeviceSessions[normalizedDeviceId] = sessionId;
+        lock (_pendingLock)
+        {
+            if (_pendingAutoSessionId == sessionId)
+            {
+                _pendingAutoSessionId = null;
+            }
+        }
+
         Start(sessionId);
     }
 
@@ -37,6 +67,31 @@ public sealed class MeasurementRunState
 
         sessionId = 0;
         return false;
+    }
+
+    public bool TryAssignPendingDeviceSession(string deviceId, out int sessionId)
+    {
+        var normalizedDeviceId = NormalizeDeviceId(deviceId);
+        if (string.IsNullOrWhiteSpace(normalizedDeviceId))
+        {
+            sessionId = 0;
+            return false;
+        }
+
+        lock (_pendingLock)
+        {
+            if (_pendingAutoSessionId is not { } pendingSessionId ||
+                !IsActive(pendingSessionId))
+            {
+                sessionId = 0;
+                return false;
+            }
+
+            _activeDeviceSessions[normalizedDeviceId] = pendingSessionId;
+            _pendingAutoSessionId = null;
+            sessionId = pendingSessionId;
+            return true;
+        }
     }
 
     public bool StopDeviceSession(string deviceId, out int sessionId)

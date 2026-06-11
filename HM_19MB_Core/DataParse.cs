@@ -47,7 +47,10 @@ namespace HM_19MB_Core
                 const int fullFixedLength = deviceLength + dateLength + timeLength + fullTailLength;
                 const int tempOnlyFixedLength = deviceLength + dateLength + timeLength + tempOnlyTailLength;
                 const int tempOnlyLegacyFixedLength = deviceLength + dateLength + timeLength + tempOnlyLegacyTailLength;
-                const int minFrameLength = tempOnlyFixedLength + tempOnlyProbeLength;
+                const int headerLength = deviceLength + dateLength + timeLength;
+                const int minimalTempOnlyFrameLength = headerLength + tempOnlyProbeLength;
+                const int minimalFullFrameLength = headerLength + fullProbeLength;
+                const int minFrameLength = minimalTempOnlyFrameLength;
                 const int maxProbeCount = 10;
                 const int maxFrameLength = fullFixedLength + maxProbeCount * fullProbeLength;
 
@@ -70,6 +73,9 @@ namespace HM_19MB_Core
 
                 if (clean.Length < minFrameLength) return null;
 
+                bool isMinimalFullFrame = clean.Length == minimalFullFrameLength;
+                bool isMinimalTempOnlyFrame = clean.Length == minimalTempOnlyFrameLength;
+
                 int fullProbePayloadLength = clean.Length - fullFixedLength;
                 bool isFullFrame = fullProbePayloadLength > 0 && fullProbePayloadLength % fullProbeLength == 0;
                 int tempOnlyProbePayloadLength = clean.Length - tempOnlyFixedLength;
@@ -80,23 +86,41 @@ namespace HM_19MB_Core
                 int probeCount;
                 bool hasHumidity;
                 bool hasHumidityStability;
-                if (isFullFrame)
+                bool hasTail;
+                if (isMinimalFullFrame)
+                {
+                    probeCount = 1;
+                    hasHumidity = true;
+                    hasHumidityStability = false;
+                    hasTail = false;
+                }
+                else if (isMinimalTempOnlyFrame)
+                {
+                    probeCount = 1;
+                    hasHumidity = false;
+                    hasHumidityStability = false;
+                    hasTail = false;
+                }
+                else if (isFullFrame)
                 {
                     probeCount = fullProbePayloadLength / fullProbeLength;
                     hasHumidity = true;
                     hasHumidityStability = true;
+                    hasTail = true;
                 }
                 else if (isTempOnlyFrame)
                 {
                     probeCount = tempOnlyProbePayloadLength / tempOnlyProbeLength;
                     hasHumidity = false;
                     hasHumidityStability = false;
+                    hasTail = true;
                 }
                 else if (isTempOnlyLegacyFrame)
                 {
                     probeCount = tempOnlyLegacyProbePayloadLength / tempOnlyProbeLength;
                     hasHumidity = false;
                     hasHumidityStability = true;
+                    hasTail = true;
                 }
                 else
                 {
@@ -140,27 +164,40 @@ namespace HM_19MB_Core
                     offset += hasHumidity ? fullProbeLength : tempOnlyProbeLength;
                 }
 
-                block.AvgTemperature = ParseContinuousFourDigit(clean.Substring(offset, 4));
-                block.AvgHumidity = hasHumidity ? ParseContinuousFourDigit(clean.Substring(offset + 4, 4)) : float.NaN;
-                offset += hasHumidity ? 8 : 4;
-
-                block.UniformityTemp = ParseContinuousFourDigit(clean.Substring(offset, 4));
-                block.UniformityHumidity = hasHumidity ? ParseContinuousFourDigit(clean.Substring(offset + 4, 4)) : float.NaN;
-                offset += hasHumidity ? 8 : 4;
-
-                // Stability is 3 bytes temperature, plus 3 bytes humidity only in humidity-capable frames.
-                if (clean.Length >= offset + 3)
+                if (hasTail)
                 {
-                    string stabTemp = clean.Substring(offset, 3);
-                    string stabHum = hasHumidityStability && clean.Length >= offset + 6
-                        ? clean.Substring(offset + 3, 3)
-                        : "---";
-                    block.StabilityTemperature = FormatStability(stabTemp);
-                    block.StabilityHumidity = FormatStability(stabHum);
-                    block.StabilityRaw = $"{block.StabilityTemperature} / {block.StabilityHumidity}";
+                    block.AvgTemperature = ParseContinuousFourDigit(clean.Substring(offset, 4));
+                    block.AvgHumidity = hasHumidity ? ParseContinuousFourDigit(clean.Substring(offset + 4, 4)) : float.NaN;
+                    offset += hasHumidity ? 8 : 4;
+
+                    block.UniformityTemp = ParseContinuousFourDigit(clean.Substring(offset, 4));
+                    block.UniformityHumidity = hasHumidity ? ParseContinuousFourDigit(clean.Substring(offset + 4, 4)) : float.NaN;
+                    offset += hasHumidity ? 8 : 4;
+
+                    // Stability is 3 bytes temperature, plus 3 bytes humidity only in humidity-capable frames.
+                    if (clean.Length >= offset + 3)
+                    {
+                        string stabTemp = clean.Substring(offset, 3);
+                        string stabHum = hasHumidityStability && clean.Length >= offset + 6
+                            ? clean.Substring(offset + 3, 3)
+                            : "---";
+                        block.StabilityTemperature = FormatStability(stabTemp);
+                        block.StabilityHumidity = FormatStability(stabHum);
+                        block.StabilityRaw = $"{block.StabilityTemperature} / {block.StabilityHumidity}";
+                    }
+                    else
+                    {
+                        block.StabilityTemperature = "---";
+                        block.StabilityHumidity = "---";
+                        block.StabilityRaw = "---";
+                    }
                 }
                 else
                 {
+                    block.AvgTemperature = block.ProbeTemperatures[0];
+                    block.AvgHumidity = hasHumidity ? block.ProbeHumidities[0] : float.NaN;
+                    block.UniformityTemp = float.NaN;
+                    block.UniformityHumidity = float.NaN;
                     block.StabilityTemperature = "---";
                     block.StabilityHumidity = "---";
                     block.StabilityRaw = "---";
@@ -176,9 +213,13 @@ namespace HM_19MB_Core
 
         private static float ParseContinuousFourDigit(string raw)
         {
+            if (string.IsNullOrWhiteSpace(raw) || raw.Contains('-'))
+                return float.NaN;
+
             if (int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out int val))
                 return val / 10.0f;
-            return 0f;
+
+            return float.NaN;
         }
 
         private static string FormatStability(string raw)

@@ -1,11 +1,22 @@
 using HM_19MB_Core.Data;
 using HM_19MB_API.Hubs;
 using HM_19MB_API.Services;
+using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddControllers();
-builder.Services.AddSignalR();
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        options.JsonSerializerOptions.NumberHandling =
+            JsonNumberHandling.AllowNamedFloatingPointLiterals;
+    });
+builder.Services.AddSignalR()
+    .AddJsonProtocol(options =>
+    {
+        options.PayloadSerializerOptions.NumberHandling =
+            JsonNumberHandling.AllowNamedFloatingPointLiterals;
+    });
 builder.Services.AddSingleton<MeasurementRunState>();
 builder.Services.AddSingleton<MeasurementIngestionService>();
 builder.Services.Configure<MqttOptions>(

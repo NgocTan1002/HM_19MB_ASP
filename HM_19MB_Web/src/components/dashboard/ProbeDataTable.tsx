@@ -29,7 +29,7 @@ function isValidNumber(value: number | undefined): value is number {
 }
 
 function toNullableNumber(value: number | undefined): number | null {
-  return isValidNumber(value) ? value : null;
+  return isValidNumber(value) && value !== 0 ? value : null;
 }
 
 function formatTemperature(value: number | null): string {
@@ -70,17 +70,20 @@ function buildRows(block: MeasurementBlock | null): ProbeRow[] {
 
   const probeRows = Array.from({ length: 10 }, (_, index): ProbeRow => {
     const isActiveProbe = block !== null && index < probeCount;
+    const temperature = isActiveProbe
+      ? toNullableNumber(block.probeTemperatures[index])
+      : null;
+    const humidity = isActiveProbe ? toNullableNumber(block.probeHumidities[index]) : null;
+    const hasAnyValue = temperature !== null || humidity !== null;
 
     return {
       key: `probe-${index + 1}`,
       stt: String(index + 1),
       name: `Đầu đo ${index + 1}`,
       kind: 'probe',
-      temperature: isActiveProbe
-        ? toNullableNumber(block.probeTemperatures[index])
-        : null,
-      humidity: isActiveProbe ? toNullableNumber(block.probeHumidities[index]) : null,
-      timestamp,
+      temperature,
+      humidity,
+      timestamp: hasAnyValue ? timestamp : null,
     };
   });
 
@@ -235,7 +238,7 @@ function ProbeDataTable({
         dataSource={rows}
         pagination={false}
         rowKey="key"
-        scroll={{ y: 400 }}
+        scroll={{ y: 580 }}
         size="small"
         tableLayout="fixed"
         virtual

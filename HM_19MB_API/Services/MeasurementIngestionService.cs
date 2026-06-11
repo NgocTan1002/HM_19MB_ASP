@@ -51,7 +51,8 @@ public sealed class MeasurementIngestionService
         string deviceId,
         MeasurementBlock block)
     {
-        if (!_runState.TryGetActiveSessionId(deviceId, out var sessionId))
+        if (!_runState.TryGetActiveSessionId(deviceId, out var sessionId) &&
+            !_runState.TryAssignPendingDeviceSession(deviceId, out sessionId))
         {
             return Task.FromResult(new MeasurementIngestionResult(
                 Id: null,

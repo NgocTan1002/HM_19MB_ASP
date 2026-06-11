@@ -38,13 +38,17 @@ function isValidNumber(value: number | undefined | null): value is number {
   return typeof value === 'number' && !Number.isNaN(value);
 }
 
+function isConnectedProbeValue(value: number | undefined | null): value is number {
+  return isValidNumber(value) && value !== 0;
+}
+
 function hasTemperatureData(block: MeasurementBlock | null): boolean {
   if (block === null) {
     return false;
   }
 
   return block.probeTemperatures.some((value, index) =>
-    index < block.probeCount && isValidNumber(value)
+    index < block.probeCount && isConnectedProbeValue(value)
   );
 }
 
@@ -54,12 +58,14 @@ function hasHumidityData(block: MeasurementBlock | null): boolean {
   }
 
   return block.probeHumidities.some((value, index) =>
-    index < block.probeCount && isValidNumber(value)
+    index < block.probeCount && isConnectedProbeValue(value)
   );
 }
 
 function calculateStats(values: Array<number | null | undefined>): MeasurementStats {
-  const validValues = values.filter((value): value is number => isValidNumber(value));
+  const validValues = values.filter((value): value is number =>
+    isConnectedProbeValue(value)
+  );
 
   if (validValues.length === 0) {
     return { max: null, min: null, range: null };

@@ -1,4 +1,5 @@
 using HM_19MB_API.Services;
+using HM_19MB_Core;
 using HM_19MB_Core.Data;
 using Microsoft.AspNetCore.Mvc;
 
@@ -9,29 +10,50 @@ namespace HM_19MB_API.Controllers
     public class MeasurementRunsController : ControllerBase
     {
         private readonly MeasurementRunState _runState;
+        private readonly MeasurementIngestionService _ingestion;
 
-        public MeasurementRunsController(MeasurementRunState runState)
+        public MeasurementRunsController(
+            MeasurementRunState runState,
+            MeasurementIngestionService ingestion)
         {
             _runState = runState;
+            _ingestion = ingestion;
         }
 
         [HttpPost("start")]
         public async Task<IActionResult> Start([FromBody] StartMeasurementRunRequest request)
         {
             var deviceId = request.DeviceId.Trim();
-            if (string.IsNullOrWhiteSpace(deviceId))
-            {
-                return BadRequest(new { error = "DeviceId is required" });
-            }
 
             await DatabaseService.EnsureSchemaAsync();
             var sessionId = await DatabaseService.TaoPhienMoiAsync(request.Metadata);
-            _runState.StartDeviceSession(deviceId, sessionId);
+            if (string.IsNullOrWhiteSpace(deviceId))
+            {
+                _runState.StartAutoSession(sessionId);
+            }
+            else
+            {
+                _runState.StartDeviceSession(deviceId, sessionId);
+            }
 
             return Ok(new
             {
                 sessionId,
-                deviceId,
+                deviceId = string.IsNullOrWhiteSpace(deviceId) ? null : deviceId,
+                active = true
+            });
+        }
+
+        [HttpPost("sessions/{sessionId}/start")]
+        public async Task<IActionResult> StartExistingSessionAuto(int sessionId)
+        {
+            await DatabaseService.EnsureSchemaAsync();
+            _runState.StartAutoSession(sessionId);
+
+            return Ok(new
+            {
+                sessionId,
+                deviceId = (string?)null,
                 active = true
             });
         }
@@ -80,6 +102,29 @@ namespace HM_19MB_API.Controllers
                 deviceId,
                 active
             });
+        }
+
+        [HttpPost("{deviceId}/measurements")]
+        public async Task<IActionResult> PostDeviceMeasurement(
+            string deviceId,
+            [FromBody] MeasurementBlock block)
+        {
+            var normalizedDeviceId = string.IsNullOrWhiteSpace(block.DeviceId)
+                ? deviceId
+                : block.DeviceId;
+            var result = await _ingestion.IngestFromDeviceAsync(normalizedDeviceId, block);
+
+            if (result.Ignored)
+            {
+                return Ok(new
+                {
+                    id = result.Id,
+                    ignored = true,
+                    reason = result.Reason
+                });
+            }
+
+            return Ok(new { id = result.Id });
         }
     }
 

@@ -121,15 +121,15 @@ export const measurementApi = {
 };
 
 export const measurementRunApi = {
-    start: (deviceId: string, metadata: SessionMetadata) =>
-        client.post<{ sessionId: number; deviceId: string; active: boolean }>(
+    start: (metadata: SessionMetadata) =>
+        client.post<{ sessionId: number; deviceId: string | null; active: boolean }>(
             '/api/measurement-runs/start',
-            { deviceId, metadata }
+            { metadata }
         ),
 
-    startExisting: (deviceId: string, sessionId: number) =>
-        client.post<{ sessionId: number; deviceId: string; active: boolean }>(
-            `/api/measurement-runs/${encodeURIComponent(deviceId)}/sessions/${sessionId}/start`
+    startExisting: (sessionId: number) =>
+        client.post<{ sessionId: number; deviceId: string | null; active: boolean }>(
+            `/api/measurement-runs/sessions/${sessionId}/start`
         ),
 
     stop: (deviceId: string) =>
