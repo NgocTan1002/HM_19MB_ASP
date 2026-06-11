@@ -4,7 +4,6 @@ namespace HM_19MB_Core.Models
 {
     /// <summary>
     /// Dữ liệu đầu vào cho phép tính độ không đảm bảo đo theo QTHC 1.013:2019.
-    /// Tất cả thuộc tính là bất biến sau khi khởi tạo.
     /// </summary>
     public sealed class UncertaintyInput
     {
@@ -15,18 +14,18 @@ namespace HM_19MB_Core.Models
         public int N { get; init; }
 
         /// <summary>
-        /// Dữ liệu thô từng lần đo từng kênh, kích thước n × j.
-        /// Hàng = lần đo (i), cột = kênh (j).
+        /// Dữ liệu thô từng lần đo từng kênh, kích thước n x j.
+        /// JSON dùng jagged array vì System.Text.Json không hỗ trợ double[,].
         /// </summary>
-        public double[,] MeasurementData { get; init; } = new double[0, 0];
+        public double[][] MeasurementData { get; init; } = Array.Empty<double[]>();
 
-        /// <summary>Số hiệu chính ∂t_j cho từng kênh, length = j.</summary>
+        /// <summary>Số hiệu chính delta t_j cho từng kênh, length = j.</summary>
         public double[] Corrections { get; init; } = Array.Empty<double>();
 
-        /// <summary>Giá trị U từ thiết bị chuẩn cho từng kênh (U₁…Uⱼ), length = j.</summary>
+        /// <summary>Giá trị U từ thiết bị chuẩn cho từng kênh, length = j.</summary>
         public double[] UValues { get; init; } = Array.Empty<double>();
 
-        /// <summary>Giá trị ∂ từ thiết bị chuẩn cho từng kênh (∂₁…∂ⱼ), length = j.</summary>
+        /// <summary>Giá trị sai số cho phép từ thiết bị chuẩn cho từng kênh, length = j.</summary>
         public double[] DeltaValues { get; init; } = Array.Empty<double>();
 
         /// <summary>Chỉ thị tủ bộ 1 (t_tn1), length = n.</summary>
@@ -35,24 +34,18 @@ namespace HM_19MB_Core.Models
         /// <summary>Chỉ thị tủ bộ 2 (t_tn2), length = n.</summary>
         public double[] Ttn2 { get; init; } = Array.Empty<double>();
 
-        /// <summary>Độ chia nhỏ nhất A (công thức 17).</summary>
+        /// <summary>Độ chia nhỏ nhất A.</summary>
         public double ResolutionA { get; init; }
 
-        /// <summary>Hệ số nhân d (công thức 17): 0.5, 0.2 hoặc 0.1.</summary>
+        /// <summary>Hệ số nhân d.</summary>
         public double ResolutionD { get; init; }
 
-        /// <summary>true = dùng U/2 (CT10), false = dùng ∂/√3 (CT11).</summary>
+        /// <summary>true = dùng U/2, false = dùng delta/sqrt(3).</summary>
         public bool UseUMethod { get; init; }
 
-        /// <summary>Giá trị đặt trên tủ nhiệt (°C).</summary>
+        /// <summary>Giá trị đặt trên tủ nhiệt.</summary>
         public double GiaTriDat { get; init; }
 
-        /// <summary>
-        /// Kiểm tra tính hợp lệ của toàn bộ dữ liệu đầu vào.
-        /// </summary>
-        /// <returns>
-        /// (true, "") nếu hợp lệ; (false, thông báo lỗi) nếu không.
-        /// </returns>
         public (bool IsValid, string Error) Validate()
         {
             if (J < 1 || J > 10)
@@ -64,10 +57,16 @@ namespace HM_19MB_Core.Models
             if (MeasurementData == null)
                 return (false, "MeasurementData không được null.");
 
-            if (MeasurementData.GetLength(0) != N || MeasurementData.GetLength(1) != J)
+            if (MeasurementData.Length != N)
                 return (false,
-                    $"MeasurementData kích thước [{MeasurementData.GetLength(0)},{MeasurementData.GetLength(1)}] " +
-                    $"không khớp N={N}, J={J}.");
+                    $"MeasurementData phải có {N} hàng, hiện tại: {MeasurementData.Length}.");
+
+            for (int i = 0; i < N; i++)
+            {
+                if (MeasurementData[i] == null || MeasurementData[i].Length != J)
+                    return (false,
+                        $"MeasurementData[{i}].Length phải = {J}, hiện tại: {MeasurementData[i]?.Length}.");
+            }
 
             if (Corrections == null || Corrections.Length != J)
                 return (false, $"Corrections.Length phải = {J}, hiện tại: {Corrections?.Length}.");
@@ -91,6 +90,19 @@ namespace HM_19MB_Core.Models
                 return (false, $"ResolutionD phải > 0, hiện tại: {ResolutionD}.");
 
             return (true, string.Empty);
+        }
+
+        public double[,] ToMeasurementMatrix()
+        {
+            var matrix = new double[N, J];
+
+            for (int i = 0; i < N; i++)
+            {
+                for (int channel = 0; channel < J; channel++)
+                    matrix[i, channel] = MeasurementData[i][channel];
+            }
+
+            return matrix;
         }
     }
 }

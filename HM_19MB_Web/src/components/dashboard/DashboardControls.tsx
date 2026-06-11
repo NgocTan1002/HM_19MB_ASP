@@ -1,12 +1,5 @@
 import {
-  DownloadOutlined,
-  PauseCircleOutlined,
-  PlayCircleOutlined,
-} from '@ant-design/icons';
-import {
-  Button,
   Card,
-  Checkbox,
   Collapse,
   Col,
   Grid,
@@ -16,10 +9,9 @@ import {
   Tag,
   Typography,
 } from 'antd';
-import type { CheckboxOptionType } from 'antd/es/checkbox/Group';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { downloadBlob, reportApi } from '../../services/api';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { MeasurementBlock } from '../../types/models';
+import './DashboardControls.css';
 
 export interface ChartDataPoint {
   timestamp: string;
@@ -31,22 +23,13 @@ export interface ChartDataPoint {
 
 interface DashboardControlsProps {
   currentBlock: MeasurementBlock | null;
-  showProbes: boolean[];
-  onToggleProbe: (index: number) => void;
-  onToggleAllProbes: (show: boolean) => void;
-  isRecording: boolean;
-  onToggleRecording: () => void;
-  recordCount: number;
-  recordStartTime: Date | null;
-  sessionId: number | null;
   chartBuffer: ChartDataPoint[];
 }
 
-interface TemperatureStats {
-  maxTemp: number | null;
-  minTemp: number | null;
+interface MeasurementStats {
+  max: number | null;
+  min: number | null;
   range: number | null;
-  sampleCount: number;
 }
 
 const { Text } = Typography;
@@ -75,194 +58,72 @@ function hasHumidityData(block: MeasurementBlock | null): boolean {
   );
 }
 
-function formatTemperature(value: number | null | undefined): string {
-  return isValidNumber(value) ? `${value.toFixed(1)}°C` : '---';
-}
+function calculateStats(values: Array<number | null | undefined>): MeasurementStats {
+  const validValues = values.filter((value): value is number => isValidNumber(value));
 
-function formatHumidity(value: number | null | undefined): string {
-  return isValidNumber(value) ? `${value.toFixed(1)}%` : '---';
-}
-
-function formatDuration(totalSeconds: number): string {
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
-
-  if (hours > 0) {
-    return `${hours}h ${minutes}m ${seconds}s`;
+  if (validValues.length === 0) {
+    return { max: null, min: null, range: null };
   }
 
-  if (minutes > 0) {
-    return `${minutes}m ${seconds}s`;
-  }
-
-  return `${seconds}s`;
-}
-
-function createReportFilename(sessionId: number): string {
-  const timestamp = new Date()
-    .toISOString()
-    .replace(/[-:]/g, '')
-    .replace(/\.\d{3}Z$/, '');
-
-  return `BaoCao_${sessionId}_${timestamp}.xlsx`;
-}
-
-function calculateTemperatureStats(chartBuffer: ChartDataPoint[]): TemperatureStats {
-  const temps = chartBuffer.flatMap(point =>
-    point.temps.filter((value): value is number => isValidNumber(value))
-  );
-
-  if (temps.length === 0) {
-    return {
-      maxTemp: null,
-      minTemp: null,
-      range: null,
-      sampleCount: chartBuffer.length,
-    };
-  }
-
-  const maxTemp = Math.max(...temps);
-  const minTemp = Math.min(...temps);
+  const max = Math.max(...validValues);
+  const min = Math.min(...validValues);
 
   return {
-    maxTemp,
-    minTemp,
-    range: maxTemp - minTemp,
-    sampleCount: chartBuffer.length,
+    max,
+    min,
+    range: max - min,
   };
+}
+
+function calculateTemperatureStats(chartBuffer: ChartDataPoint[]): MeasurementStats {
+  return calculateStats(chartBuffer.flatMap(point => point.temps));
+}
+
+function calculateHumidityStats(chartBuffer: ChartDataPoint[]): MeasurementStats {
+  return calculateStats(chartBuffer.flatMap(point => point.hums));
 }
 
 export default function DashboardControls({
   currentBlock,
-  showProbes,
-  onToggleProbe,
-  onToggleAllProbes,
-  isRecording,
-  onToggleRecording,
-  recordCount,
-  recordStartTime,
-  sessionId,
   chartBuffer,
 }: DashboardControlsProps) {
   const screens = Grid.useBreakpoint();
   const isMobile = screens.md === false;
-  const [exporting, setExporting] = useState(false);
-  const [now, setNow] = useState(() => new Date());
   const chartBufferRef = useRef(chartBuffer);
-  const [stats, setStats] = useState<TemperatureStats>(() =>
+  const [temperatureStats, setTemperatureStats] = useState<MeasurementStats>(() =>
     calculateTemperatureStats(chartBuffer)
+  );
+  const [humidityStats, setHumidityStats] = useState<MeasurementStats>(() =>
+    calculateHumidityStats(chartBuffer)
   );
 
   const temperatureAvailable = useMemo(
-    () => hasTemperatureData(currentBlock),
-    [currentBlock]
+    () => hasTemperatureData(currentBlock) || temperatureStats.max !== null,
+    [currentBlock, temperatureStats.max]
   );
   const humidityAvailable = useMemo(
-    () => hasHumidityData(currentBlock),
-    [currentBlock]
+    () => hasHumidityData(currentBlock) || humidityStats.max !== null,
+    [currentBlock, humidityStats.max]
   );
-
-  useEffect(() => {
-    const intervalId = window.setInterval(() => {
-      setNow(new Date());
-    }, 1000);
-
-    return () => {
-      window.clearInterval(intervalId);
-    };
-  }, []);
 
   useEffect(() => {
     chartBufferRef.current = chartBuffer;
   }, [chartBuffer]);
 
   useEffect(() => {
-    const intervalId = window.setInterval(() => {
-      setStats(calculateTemperatureStats(chartBufferRef.current));
-    }, 2000);
+    const updateStats = () => {
+      const points = chartBufferRef.current;
+      setTemperatureStats(calculateTemperatureStats(points));
+      setHumidityStats(calculateHumidityStats(points));
+    };
+
+    updateStats();
+    const intervalId = window.setInterval(updateStats, 2000);
 
     return () => {
       window.clearInterval(intervalId);
     };
   }, []);
-
-  const recordingSeconds = useMemo(() => {
-    if (!isRecording || recordStartTime === null) {
-      return 0;
-    }
-
-    return Math.max(0, Math.floor((now.getTime() - recordStartTime.getTime()) / 1000));
-  }, [isRecording, now, recordStartTime]);
-
-  const selectedProbeValues = useMemo(
-    () =>
-      showProbes
-        .map((selected, index) => (selected ? index : null))
-        .filter((index): index is number => index !== null),
-    [showProbes]
-  );
-
-  const probeOptions = useMemo<CheckboxOptionType<number>[]>(
-    () =>
-      Array.from({ length: 10 }, (_, index) => {
-        const temperature =
-          currentBlock !== null && index < currentBlock.probeCount
-            ? currentBlock.probeTemperatures[index]
-            : null;
-        const humidity =
-          currentBlock !== null && index < currentBlock.probeCount
-            ? currentBlock.probeHumidities[index]
-            : null;
-        const hasTemperature = isValidNumber(temperature);
-        const hasHumidity = isValidNumber(humidity);
-        const valueLabel = hasTemperature
-          ? formatTemperature(temperature)
-          : formatHumidity(humidity);
-
-        return {
-          label: `Đầu đo ${index + 1} (${valueLabel})`,
-          value: index,
-          disabled: !hasTemperature && !hasHumidity,
-        };
-      }),
-    [currentBlock]
-  );
-
-  const handleProbeGroupChange = useCallback(
-    (checkedValues: number[]) => {
-      for (let index = 0; index < 10; index += 1) {
-        const shouldShow = checkedValues.includes(index);
-        const currentlyShown = showProbes[index] === true;
-
-        if (shouldShow !== currentlyShown) {
-          onToggleProbe(index);
-        }
-      }
-    },
-    [onToggleProbe, showProbes]
-  );
-
-  const handleExportExcel = useCallback(async () => {
-    if (sessionId === null) {
-      return;
-    }
-
-    setExporting(true);
-
-    try {
-      const response = await reportApi.exportExcel(sessionId);
-      const data: unknown = response.data;
-
-      if (!(data instanceof Blob)) {
-        throw new Error('Export Excel response is not a Blob');
-      }
-
-      downloadBlob(data, createReportFilename(sessionId));
-    } finally {
-      setExporting(false);
-    }
-  }, [sessionId]);
 
   const dataModeLabel = temperatureAvailable && humidityAvailable
     ? 'Nhiệt độ + Độ ẩm'
@@ -283,88 +144,62 @@ export default function DashboardControls({
     </Space>
   );
 
-  const probeControls = (
-    <Space direction="vertical" size={8} className="dashboard-controls-section">
-      <div className="dashboard-controls-row">
-        <Text strong>Đầu đo</Text>
-        <Space size={6}>
-          <Button size="small" onClick={() => onToggleAllProbes(true)}>
-            Chọn tất cả
-          </Button>
-          <Button size="small" onClick={() => onToggleAllProbes(false)}>
-            Bỏ chọn tất cả
-          </Button>
-        </Space>
-      </div>
-      <Checkbox.Group<number>
-        className="dashboard-probe-grid"
-        options={probeOptions}
-        onChange={handleProbeGroupChange}
-        value={selectedProbeValues}
-      />
-    </Space>
-  );
-
-  const recordingControls = (
-    <Space direction="vertical" size={8} className="dashboard-controls-section">
-      <Text strong>Ghi dữ liệu</Text>
-      <Space wrap>
-        <Button
-          danger={isRecording}
-          icon={isRecording ? <PauseCircleOutlined /> : <PlayCircleOutlined />}
-          onClick={onToggleRecording}
-          type={isRecording ? 'default' : 'primary'}
-        >
-          {isRecording ? 'Dừng ghi' : 'Bắt đầu ghi'}
-        </Button>
-        <Button
-          disabled={sessionId === null}
-          icon={<DownloadOutlined />}
-          loading={exporting}
-          onClick={handleExportExcel}
-        >
-          Xuất Excel
-        </Button>
-      </Space>
-      {isRecording && (
-        <Text type="secondary">
-          {recordCount} lần đo · {formatDuration(recordingSeconds)}
-        </Text>
-      )}
-    </Space>
-  );
-
   const statisticsPanel = (
     <Space direction="vertical" size={8} className="dashboard-controls-section">
       <Text strong>Thống kê nhanh</Text>
-      <Row gutter={[8, 8]}>
-        <Col span={12}>
+      <Row gutter={[12, 8]}>
+        <Col xs={24} sm={12} md={8} xl={humidityAvailable ? 4 : 8}>
           <Statistic
-            title="Max temp"
-            value={stats.maxTemp ?? '--'}
-            precision={stats.maxTemp === null ? undefined : 2}
-            suffix={stats.maxTemp === null ? undefined : '°C'}
+            title="Nhiệt độ lớn nhất"
+            value={temperatureStats.max ?? '--'}
+            precision={temperatureStats.max === null ? undefined : 2}
+            suffix={temperatureStats.max === null ? undefined : '°C'}
           />
         </Col>
-        <Col span={12}>
+        <Col xs={24} sm={12} md={8} xl={humidityAvailable ? 4 : 8}>
           <Statistic
-            title="Min temp"
-            value={stats.minTemp ?? '--'}
-            precision={stats.minTemp === null ? undefined : 2}
-            suffix={stats.minTemp === null ? undefined : '°C'}
+            title="Nhiệt độ nhỏ nhất"
+            value={temperatureStats.min ?? '--'}
+            precision={temperatureStats.min === null ? undefined : 2}
+            suffix={temperatureStats.min === null ? undefined : '°C'}
           />
         </Col>
-        <Col span={12}>
+        <Col xs={24} sm={12} md={8} xl={humidityAvailable ? 4 : 8}>
           <Statistic
-            title="Range"
-            value={stats.range ?? '--'}
-            precision={stats.range === null ? undefined : 2}
-            suffix={stats.range === null ? undefined : '°C'}
+            title="Chênh lệch nhiệt"
+            value={temperatureStats.range ?? '--'}
+            precision={temperatureStats.range === null ? undefined : 2}
+            suffix={temperatureStats.range === null ? undefined : '°C'}
           />
         </Col>
-        <Col span={12}>
-          <Statistic title="Số lần đo" value={stats.sampleCount} />
-        </Col>
+        {humidityAvailable && (
+          <>
+            <Col xs={24} sm={12} md={8} xl={4}>
+              <Statistic
+                title="Độ ẩm lớn nhất"
+                value={humidityStats.max ?? '--'}
+                precision={humidityStats.max === null ? undefined : 2}
+                suffix={humidityStats.max === null ? undefined : '%'}
+              />
+            </Col>
+            <Col xs={24} sm={12} md={8} xl={4}>
+              <Statistic
+                title="Độ ẩm nhỏ nhất"
+                value={humidityStats.min ?? '--'}
+                precision={humidityStats.min === null ? undefined : 2}
+                suffix={humidityStats.min === null ? undefined : '%'}
+              />
+            </Col>
+            <Col xs={24} sm={12} md={8} xl={4}>
+              <Statistic
+                title="Chênh lệch ẩm"
+                value={humidityStats.range ?? '--'}
+                precision={humidityStats.range === null ? undefined : 2}
+                suffix={humidityStats.range === null ? undefined : '%'}
+              />
+            </Col>
+          </>
+        )}
       </Row>
     </Space>
   );
@@ -372,88 +207,19 @@ export default function DashboardControls({
   const content = (
     <div className="dashboard-controls-grid">
       {dataProfile}
-      {probeControls}
-      {recordingControls}
       {statisticsPanel}
     </div>
   );
 
   return (
     <Card className="dashboard-controls" size="small">
-      <style>
-        {`
-          .dashboard-controls {
-            width: 100%;
-          }
-
-          .dashboard-controls .ant-card-body {
-            padding: 12px;
-          }
-
-          .dashboard-controls-grid {
-            display: grid;
-            grid-template-columns: minmax(180px, 0.8fr) minmax(320px, 1.4fr) minmax(220px, 1fr) minmax(260px, 1fr);
-            gap: 12px;
-            align-items: start;
-          }
-
-          .dashboard-controls-section {
-            width: 100%;
-          }
-
-          .dashboard-controls-row {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 8px;
-          }
-
-          .dashboard-probe-grid {
-            display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 6px 10px;
-          }
-
-          .dashboard-probe-grid .ant-checkbox-wrapper {
-            margin-inline-start: 0;
-            min-width: 0;
-          }
-
-          .dashboard-probe-grid .ant-checkbox-wrapper span:last-child {
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-          }
-
-          @media (max-width: 1200px) {
-            .dashboard-controls-grid {
-              grid-template-columns: repeat(2, minmax(0, 1fr));
-            }
-          }
-
-          @media (max-width: 767px) {
-            .dashboard-controls .ant-card-body {
-              padding: 8px;
-            }
-
-            .dashboard-controls-grid {
-              grid-template-columns: 1fr;
-            }
-
-            .dashboard-probe-grid {
-              grid-template-columns: 1fr;
-            }
-          }
-        `}
-      </style>
-
       {isMobile ? (
         <Collapse
           ghost
           items={[
             {
               key: 'dashboard-controls',
-              label: 'Điều khiển Dashboard',
+              label: 'Thông tin theo dõi',
               children: content,
             },
           ]}

@@ -1,0 +1,7 @@
+.calibration-results-editing-row > td {
+  background: #e6f4ff !important;
+}
+
+.calibration-results-empty .ant-table-content {
+  overflow-x: hidden !important;
+}

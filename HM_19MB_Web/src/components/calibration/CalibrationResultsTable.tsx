@@ -12,6 +12,7 @@ import {
 import { DeleteOutlined, EditOutlined } from '@ant-design/icons';
 import { calibrationApi } from '../../services/api';
 import type { CalibrationResultRow, ChiTietLanDo } from '../../types/models';
+import './CalibrationResultsTable.css';
 
 const { Text } = Typography;
 
@@ -107,6 +108,7 @@ function CalibrationResultsTable({
   );
 
   const maxChannels = useMemo(() => normalizeChannelCount(rows), [rows]);
+  const hasRows = rows.length > 0;
 
   const handleEdit = useCallback(
     (row: CalibrationResultRow) => {
@@ -230,14 +232,14 @@ function CalibrationResultsTable({
         dataIndex: 'stt',
         key: 'stt',
         width: 60,
-        fixed: 'left',
+        fixed: hasRows ? 'left' : undefined,
       },
       {
         title: 'Giá trị đặt',
         dataIndex: 'giaTriDat',
         key: 'giaTriDat',
         width: 110,
-        fixed: 'left',
+        fixed: hasRows ? 'left' : undefined,
         align: 'right',
         render: (value: number) => formatNumber(value, 4),
       },
@@ -246,13 +248,13 @@ function CalibrationResultsTable({
         dataIndex: 'giaTriChiThi',
         key: 'giaTriChiThi',
         width: 110,
-        fixed: 'left',
+        fixed: hasRows ? 'left' : undefined,
         align: 'right',
         render: (value: number) => formatNumber(value, 4),
       },
       ...channelColumns,
       {
-        title: 't̄_ch',
+          title: 'Trung bình (°C)',
         dataIndex: 'giaTriTrungBinh',
         key: 'giaTriTrungBinh',
         width: 100,
@@ -260,7 +262,7 @@ function CalibrationResultsTable({
         render: (value: number) => formatNumber(value, 4),
       },
       {
-        title: 'Δt',
+        title: 'Số hiệu chính (°C)',
         dataIndex: 'soHieuChinh',
         key: 'soHieuChinh',
         width: 90,
@@ -272,7 +274,7 @@ function CalibrationResultsTable({
         ),
       },
       {
-        title: 'δt_od',
+        title: 'Độ ổn định (°C)',
         dataIndex: 'doOnDinh',
         key: 'doOnDinh',
         width: 90,
@@ -280,7 +282,7 @@ function CalibrationResultsTable({
         render: (value: number) => formatNumber(value, 4),
       },
       {
-        title: 'δt_dd',
+        title: 'Độ đồng đều (°C)',
         dataIndex: 'doDongDeu',
         key: 'doDongDeu',
         width: 90,
@@ -288,7 +290,7 @@ function CalibrationResultsTable({
         render: (value: number) => formatNumber(value, 4),
       },
       {
-        title: 'U',
+        title: 'ĐKĐB mở rộng (°C)',
         dataIndex: 'doKhongDamBao',
         key: 'doKhongDamBao',
         width: 90,
@@ -299,7 +301,7 @@ function CalibrationResultsTable({
         title: 'Thao tác',
         key: 'actions',
         width: 140,
-        fixed: 'right',
+        fixed: hasRows ? 'right' : undefined,
         render: (_value, row) => (
           <Space size={4}>
             <Button
@@ -326,18 +328,15 @@ function CalibrationResultsTable({
         ),
       },
     ];
-  }, [handleDelete, handleEdit, maxChannels]);
+  }, [handleDelete, handleEdit, hasRows, maxChannels]);
+
+  const tableScroll = useMemo(
+    () => (hasRows ? { x: 900 + maxChannels * 90 } : undefined),
+    [hasRows, maxChannels]
+  );
 
   return (
     <>
-      <style>
-        {`
-          .calibration-results-editing-row > td {
-            background: #e6f4ff !important;
-          }
-        `}
-      </style>
-
       <Table<CalibrationResultRow>
         columns={columns}
         dataSource={rows}
@@ -362,7 +361,8 @@ function CalibrationResultsTable({
           row.stt === editingStt ? 'calibration-results-editing-row' : ''
         }
         rowKey={(row) => row.id ?? `stt-${row.stt}`}
-        scroll={{ x: 900 + maxChannels * 90 }}
+        rootClassName={!hasRows ? 'calibration-results-empty' : undefined}
+        scroll={tableScroll}
         size="small"
       />
     </>

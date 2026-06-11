@@ -1,17 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Button,
   Card,
-  Col,
   Empty,
   message,
-  Row,
+  Modal,
   Skeleton,
   Space,
   Typography,
 } from 'antd';
-import { PlusOutlined } from '@ant-design/icons';
-import { useNavigate, useParams } from 'react-router-dom';
+import { CloseOutlined, CompressOutlined, PlusOutlined } from '@ant-design/icons';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import AutoCaptureControl from '../components/calibration/AutoCaptureControl';
 import CalibrationForm, {
   type CalibrationFormHandle,
@@ -20,8 +20,15 @@ import CalibrationResultsTable from '../components/calibration/CalibrationResult
 import { ExportButtons } from '../components/calibration/ExportButtons';
 import UncertaintyBudgetTable from '../components/calibration/UncertaintyBudgetTable';
 import { useSession } from '../contexts/useSession';
-import { calibrationApi } from '../services/api';
+import { calibrationApi, getErrorMessage } from '../services/api';
 import type { CalibrationResultRow, UncertaintyResult } from '../types/models';
+import {
+  clearMinimizedCalibrationDraft,
+  getMinimizedCalibrationDraft,
+  saveMinimizedCalibrationDraft,
+  type CalibrationFormDraftState,
+} from '../utils/calibrationDraft';
+import './Calibration.css';
 
 const { Title } = Typography;
 
@@ -54,91 +61,203 @@ function getMaxChannels(rows: CalibrationResultRow[]): number {
 
 export default function Calibration() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { id } = useParams();
   const { currentSessionId } = useSession();
   const sessionId = parseSessionId(id, currentSessionId);
+  const queryClient = useQueryClient();
   const formRef = useRef<CalibrationFormHandle | null>(null);
 
-  const [rows, setRows] = useState<CalibrationResultRow[]>([]);
-  const [loading, setLoading] = useState(false);
   const [activeEditor, setActiveEditor] = useState<ActiveEditor | null>(null);
   const [loadingEditor, setLoadingEditor] = useState(false);
-  const [saving, setSaving] = useState(false);
   const [latestResult, setLatestResult] = useState<UncertaintyResult | null>(null);
   const [activeTargetTemp, setActiveTargetTemp] = useState(0);
   const [activeJ, setActiveJ] = useState(3);
+  const [activeN, setActiveN] = useState(5);
+  const [activeDraftState, setActiveDraftState] =
+    useState<CalibrationFormDraftState | null>(null);
 
-  const loadResults = useCallback(async () => {
-    if (sessionId === null) {
-      return;
-    }
+  const resultsQueryKey = useMemo(
+    () => ['calibration-results', sessionId] as const,
+    [sessionId]
+  );
 
-    setLoading(true);
-    try {
+  const {
+    data: rows = [],
+    error: resultsError,
+    isFetching: loading,
+    refetch: refetchResults,
+  } = useQuery({
+    queryKey: resultsQueryKey,
+    enabled: sessionId !== null,
+    queryFn: async () => {
+      if (sessionId === null) {
+        return [];
+      }
       const response = await calibrationApi.getBySession(sessionId);
-      setRows(response.data);
-    } catch (error) {
-      console.error('[Calibration] Load results failed:', error);
-      message.error('Không tải được bảng kết quả hiệu chuẩn');
-    } finally {
-      setLoading(false);
-    }
+      return response.data;
+    },
+  });
+
+  useEffect(() => {
+    const timerId = window.setTimeout(() => {
+      setActiveEditor(null);
+      setLoadingEditor(false);
+      setLatestResult(null);
+      setActiveDraftState(null);
+      setActiveTargetTemp(0);
+      setActiveJ(3);
+      setActiveN(5);
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timerId);
+    };
   }, [sessionId]);
 
   useEffect(() => {
-    let cancelled = false;
+    if (resultsError !== null) {
+      console.error('[Calibration] Load results failed:', resultsError);
+      message.error(
+        getErrorMessage(resultsError, 'Khong tai duoc bang ket qua hieu chuan')
+      );
+    }
+  }, [resultsError]);
 
-    async function load() {
-      setRows([]);
-      setActiveEditor(null);
-      setLoadingEditor(false);
-      setSaving(false);
-      setLatestResult(null);
-      setActiveTargetTemp(0);
-      setActiveJ(3);
+  const invalidateResults = useCallback(async () => {
+    await queryClient.invalidateQueries({ queryKey: resultsQueryKey });
+  }, [queryClient, resultsQueryKey]);
 
+  const deleteMutation = useMutation({
+    mutationFn: async (stt: number) => {
       if (sessionId === null) {
-        setLoading(false);
         return;
       }
 
-      setLoading(true);
-      try {
-        const response = await calibrationApi.getBySession(sessionId);
-        if (!cancelled) {
-          setRows(response.data);
-        }
-      } catch (error) {
-        console.error('[Calibration] Load results failed:', error);
-        if (!cancelled) {
-          message.error('Không tải được bảng kết quả hiệu chuẩn');
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
+      await calibrationApi.delete(sessionId, stt);
+    },
+    onSuccess: async (_data, stt) => {
+      if (activeEditor?.stt === stt) {
+        setActiveEditor(null);
+        setLatestResult(null);
       }
-    }
 
-    void load();
+      await invalidateResults();
+      message.success('Da xoa');
+    },
+    onError: (error) => {
+      console.error('[Calibration] Delete failed:', error);
+      message.error(getErrorMessage(error, 'Khong xoa duoc ket qua hieu chuan'));
+    },
+  });
 
-    return () => {
-      cancelled = true;
-    };
-  }, [sessionId]);
+  const saveMutation = useMutation({
+    mutationFn: async (row: CalibrationResultRow) => {
+      if (sessionId === null) {
+        return;
+      }
+
+      await calibrationApi.save(sessionId, row);
+    },
+    onSuccess: async () => {
+      await invalidateResults();
+      clearMinimizedCalibrationDraft();
+      setActiveEditor(null);
+      setLatestResult(null);
+      setActiveDraftState(null);
+      message.success('Da luu ket qua hieu chuan');
+    },
+    onError: (error) => {
+      console.error('[Calibration] Save failed:', error);
+      message.error(getErrorMessage(error, 'Khong luu duoc ket qua hieu chuan'));
+    },
+  });
 
   const maxChannels = useMemo(() => {
     const max = getMaxChannels(rows);
     return max > 0 ? max : 3;
   }, [rows]);
 
+  const handleCancel = useCallback(() => {
+    clearMinimizedCalibrationDraft();
+    setActiveEditor(null);
+    setLatestResult(null);
+    setActiveDraftState(null);
+  }, []);
+
+  const editorTitle = useMemo(() => {
+    if (activeEditor === null || sessionId === null) {
+      return null;
+    }
+
+    const titleText = activeEditor.mode === 'add'
+      ? `Them diem do moi - STT ${activeEditor.stt}`
+      : `Sua diem do - STT ${activeEditor.stt}`;
+
+    return (
+      <div className="calibration-editor-title">
+        <span>{titleText}</span>
+        <div className="calibration-editor-window-actions">
+          <Button
+            aria-label="Thu nho form"
+            disabled={saveMutation.isPending || loadingEditor}
+            icon={<CompressOutlined />}
+            onClick={() => {
+              const formState = formRef.current?.getDraft();
+
+              if (formState === undefined) {
+                return;
+              }
+
+              saveMinimizedCalibrationDraft({
+                sessionId,
+                mode: activeEditor.mode,
+                stt: activeEditor.stt,
+                giaTriDat: activeEditor.giaTriDat,
+                initialRow: activeEditor.initialRow,
+                activeTargetTemp,
+                activeJ,
+                activeN,
+                formState,
+              });
+              setActiveEditor(null);
+              setLatestResult(null);
+              setActiveDraftState(null);
+              message.info('Da an form hieu chuan tam thoi');
+            }}
+            type="text"
+          />
+          <Button
+            aria-label="Dong form"
+            disabled={saveMutation.isPending || loadingEditor}
+            icon={<CloseOutlined />}
+            onClick={handleCancel}
+            type="text"
+          />
+        </div>
+      </div>
+    );
+  }, [
+    activeEditor,
+    activeJ,
+    activeN,
+    activeTargetTemp,
+    handleCancel,
+    loadingEditor,
+    saveMutation.isPending,
+    sessionId,
+  ]);
+
   const handleAdd = useCallback(() => {
     const nextStt = getMaxStt(rows) + 1;
     const nextGiaTriDat = rows.length > 0 ? rows[rows.length - 1].giaTriDat : 0;
 
     setLatestResult(null);
+    setActiveDraftState(null);
+    clearMinimizedCalibrationDraft();
     setActiveTargetTemp(nextGiaTriDat);
     setActiveJ(3);
+    setActiveN(5);
     setActiveEditor({
       mode: 'add',
       stt: nextStt,
@@ -154,7 +273,7 @@ export default function Calibration() {
       }
 
       if (row.id === undefined) {
-        message.error('Không tìm thấy ID kết quả để tải chi tiết');
+        message.error('Khong tim thay ID ket qua de tai chi tiet');
         return;
       }
 
@@ -162,8 +281,11 @@ export default function Calibration() {
       try {
         const details = await calibrationApi.getChiTiet(sessionId, row.id);
         setLatestResult(null);
+        setActiveDraftState(null);
+        clearMinimizedCalibrationDraft();
         setActiveTargetTemp(row.giaTriDat);
         setActiveJ(row.soKenh || 3);
+        setActiveN(row.soLanDo || 5);
         setActiveEditor({
           mode: 'edit',
           stt: row.stt,
@@ -175,7 +297,7 @@ export default function Calibration() {
         });
       } catch (error) {
         console.error('[Calibration] Load result details failed:', error);
-        message.error('Không tải được chi tiết lần đo');
+        message.error(getErrorMessage(error, 'Khong tai duoc chi tiet lan do'));
       } finally {
         setLoadingEditor(false);
       }
@@ -190,19 +312,12 @@ export default function Calibration() {
       }
 
       try {
-        await calibrationApi.delete(sessionId, stt);
-        if (activeEditor?.stt === stt) {
-          setActiveEditor(null);
-          setLatestResult(null);
-        }
-        await loadResults();
-        message.success('Đã xóa');
-      } catch (error) {
-        console.error('[Calibration] Delete failed:', error);
-        message.error('Không xóa được kết quả hiệu chuẩn');
+        await deleteMutation.mutateAsync(stt);
+      } catch {
+        // Mutation handles user feedback.
       }
     },
-    [activeEditor, loadResults, sessionId]
+    [deleteMutation, sessionId]
   );
 
   const handleSaved = useCallback(
@@ -211,27 +326,47 @@ export default function Calibration() {
         return;
       }
 
-      setSaving(true);
       try {
-        await calibrationApi.save(sessionId, row);
-        await loadResults();
-        setActiveEditor(null);
-        setLatestResult(null);
-        message.success('Đã lưu kết quả hiệu chuẩn');
-      } catch (error) {
-        console.error('[Calibration] Save failed:', error);
-        message.error('Không lưu được kết quả hiệu chuẩn');
-      } finally {
-        setSaving(false);
+        await saveMutation.mutateAsync(row);
+      } catch {
+        // Mutation handles user feedback.
       }
     },
-    [loadResults, sessionId]
+    [saveMutation, sessionId]
   );
 
-  const handleCancel = useCallback(() => {
-    setActiveEditor(null);
-    setLatestResult(null);
-  }, []);
+  useEffect(() => {
+    const state = location.state as { resumeCalibrationDraft?: number } | null;
+
+    if (state?.resumeCalibrationDraft === undefined) {
+      return;
+    }
+
+    const draft = getMinimizedCalibrationDraft();
+
+    if (draft === null || draft.sessionId !== sessionId) {
+      return;
+    }
+
+    const timerId = window.setTimeout(() => {
+      setLatestResult(draft.formState.result);
+      setActiveTargetTemp(draft.activeTargetTemp);
+      setActiveJ(draft.activeJ);
+      setActiveN(draft.activeN);
+      setActiveDraftState(draft.formState);
+      setActiveEditor({
+        mode: draft.mode,
+        stt: draft.stt,
+        giaTriDat: draft.giaTriDat,
+        initialRow: draft.initialRow,
+      });
+      clearMinimizedCalibrationDraft();
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timerId);
+    };
+  }, [location.state, sessionId]);
 
   const handleAutoCapture = useCallback((vals: number[], chiThi: number) => {
     formRef.current?.appendMeasurement(vals, chiThi);
@@ -243,86 +378,106 @@ export default function Calibration() {
 
   if (sessionId === null) {
     return (
-      <Empty description="Chọn phiên đo trước">
+      <Empty description="Chon phien do truoc">
         <Button type="primary" onClick={handleGoToSessions}>
-          Đến trang phiên đo
+          Den trang phien do
         </Button>
       </Empty>
     );
   }
 
   return (
-    <section>
-      <Row gutter={[16, 16]}>
-        <Col xs={24} lg={10}>
-          <Card
-            title={<Title level={4}>Bảng kết quả hiệu chuẩn</Title>}
-            extra={
-              <Space wrap>
-                <ExportButtons sessionId={sessionId} kenhCount={maxChannels} />
-                <Button
-                  type="primary"
-                  icon={<PlusOutlined />}
-                  onClick={handleAdd}
-                >
-                  Thêm điểm đo mới
-                </Button>
-              </Space>
-            }
-          >
-            <CalibrationResultsTable
+    <section className="calibration-page">
+      <Modal
+        centered={false}
+        className="calibration-editor-modal"
+        closable={false}
+        destroyOnHidden
+        footer={null}
+        keyboard={!saveMutation.isPending && !loadingEditor}
+        maskClosable={!saveMutation.isPending && !loadingEditor}
+        onCancel={handleCancel}
+        open={activeEditor !== null}
+        style={{ maxWidth: 'none', top: 16 }}
+        styles={{
+          body: {
+            height: 'calc(100vh - 118px)',
+            overflowX: 'hidden',
+            overflowY: 'auto',
+          },
+        }}
+        title={editorTitle}
+        width="calc(100vw - 32px)"
+        okButtonProps={{ disabled: true }}
+        cancelButtonProps={{ disabled: saveMutation.isPending || loadingEditor }}
+      >
+        {activeEditor !== null ? (
+          <Space direction="vertical" size={16} style={{ width: '100%' }}>
+            <AutoCaptureControl
               sessionId={sessionId}
-              rows={rows}
-              loading={loading}
-              onEdit={handleEdit}
-              onDelete={handleDelete}
-              onRefresh={loadResults}
-              editingStt={activeEditor?.stt}
+              j={activeJ}
+              targetTemp={activeTargetTemp}
+              tolerance={0.5}
+              maxCaptures={activeN}
+              onCapture={handleAutoCapture}
+              disabled={saveMutation.isPending || loadingEditor}
             />
-          </Card>
-        </Col>
 
-        <Col xs={24} lg={14}>
-          {activeEditor !== null ? (
-            <Space direction="vertical" size={16} style={{ width: '100%' }}>
-              <AutoCaptureControl
+            {loadingEditor ? (
+              <Skeleton active paragraph={{ rows: 10 }} />
+            ) : (
+              <CalibrationForm
+                key={`${activeEditor.mode}-${activeEditor.stt}`}
+                ref={formRef}
                 sessionId={sessionId}
-                j={activeJ}
-                targetTemp={activeTargetTemp}
-                tolerance={0.5}
-                onCapture={handleAutoCapture}
-                disabled={saving || loadingEditor}
+                stt={activeEditor.stt}
+                giaTriDat={activeEditor.giaTriDat}
+                initialRow={activeEditor.initialRow}
+                onSaved={handleSaved}
+                onCancel={handleCancel}
+                onResultChange={setLatestResult}
+                onGiaTriDatChange={setActiveTargetTemp}
+                onJChange={setActiveJ}
+                onNChange={setActiveN}
+                draftState={activeDraftState}
               />
+            )}
 
-              {loadingEditor ? (
-                <Skeleton active paragraph={{ rows: 10 }} />
-              ) : (
-                <CalibrationForm
-                  key={`${activeEditor.mode}-${activeEditor.stt}`}
-                  ref={formRef}
-                  sessionId={sessionId}
-                  stt={activeEditor.stt}
-                  giaTriDat={activeEditor.giaTriDat}
-                  initialRow={activeEditor.initialRow}
-                  onSaved={handleSaved}
-                  onCancel={handleCancel}
-                  onResultChange={setLatestResult}
-                  onGiaTriDatChange={setActiveTargetTemp}
-                  onJChange={setActiveJ}
-                />
-              )}
+            {latestResult !== null ? (
+              <UncertaintyBudgetTable
+                result={latestResult}
+                j={activeJ}
+                useUMethod={latestResult.calculationMethod !== 'Delta'}
+              />
+            ) : null}
+          </Space>
+        ) : null}
+      </Modal>
 
-              {latestResult !== null ? (
-                <UncertaintyBudgetTable
-                  result={latestResult}
-                  j={activeJ}
-                  useUMethod={latestResult.calculationMethod !== 'Delta'}
-                />
-              ) : null}
-            </Space>
-          ) : null}
-        </Col>
-      </Row>
+      <Card
+        className="calibration-results-card"
+        title={<Title level={4}>Tính hiệu chuẩn</Title>}
+        extra={
+          <Space wrap className="calibration-results-actions">
+            <ExportButtons sessionId={sessionId} kenhCount={maxChannels} />
+            <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>
+              Them diem do moi
+            </Button>
+          </Space>
+        }
+      >
+        <CalibrationResultsTable
+          sessionId={sessionId}
+          rows={rows}
+          loading={loading}
+          onEdit={handleEdit}
+          onDelete={handleDelete}
+          onRefresh={async () => {
+            await refetchResults();
+          }}
+          editingStt={activeEditor?.stt}
+        />
+      </Card>
     </section>
   );
 }

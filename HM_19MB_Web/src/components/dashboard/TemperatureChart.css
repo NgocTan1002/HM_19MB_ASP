@@ -1,0 +1,62 @@
+.temperature-chart {
+  width: 100%;
+}
+
+.temperature-chart-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 12px;
+}
+
+.temperature-chart-tooltip {
+  min-width: 240px;
+  max-height: 360px;
+  overflow: auto;
+  padding: 10px 12px;
+  border: 1px solid #d9d9d9;
+  background: #ffffff;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+}
+
+.temperature-chart-tooltip-list {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.temperature-chart-tooltip-row {
+  display: grid;
+  grid-template-columns: 10px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.temperature-chart-tooltip-dot,
+.temperature-chart-legend-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.temperature-chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px 12px;
+  padding-top: 8px;
+}
+
+.temperature-chart-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  background: transparent;
+  color: #374151;
+  cursor: default;
+  font: inherit;
+  font-size: 12px;
+  padding: 2px 4px;
+}

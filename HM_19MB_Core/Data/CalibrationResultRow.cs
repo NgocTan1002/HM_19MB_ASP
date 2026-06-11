@@ -162,8 +162,12 @@ namespace HM_19MB_Core.Data
 
             for (int i = 0; i < 10; i++)
             {
-                object val = double.IsNaN(row.Kenh[i])
-                    ? DBNull.Value : (object)row.Kenh[i];
+                double? channelValue = row.Kenh != null && i < row.Kenh.Length
+                    ? row.Kenh[i]
+                    : null;
+                object val = channelValue.HasValue && !double.IsNaN(channelValue.Value)
+                    ? channelValue.Value
+                    : DBNull.Value;
                 cmd.Parameters.AddWithValue($"@kenh_{i + 1}", val);
             }
 
@@ -281,8 +285,19 @@ namespace HM_19MB_Core.Data
 
                 foreach (var d in group)
                 {
-                    if (d.Kenh >= 1 && d.Kenh <= 10)
+                    if (d.KenhValues != null)
+                    {
+                        for (int i = 0; i < Math.Min(d.KenhValues.Length, 10); i++)
+                        {
+                            if (d.KenhValues[i].HasValue)
+                                kenhValues[i] = d.KenhValues[i];
+                        }
+                    }
+                    else if (d.Kenh >= 1 && d.Kenh <= 10)
+                    {
                         kenhValues[d.Kenh - 1] = d.GiaTri;
+                    }
+
                     if (d.ChiThiUut.HasValue)
                         chiThi = d.ChiThiUut;
                 }

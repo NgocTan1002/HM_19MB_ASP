@@ -1,0 +1,44 @@
+.measurement-grid {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.measurement-grid .ant-table-wrapper {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.measurement-grid .ant-table-cell {
+  padding-inline: 6px;
+}
+
+.measurement-grid .ant-table-thead > tr > th {
+  line-height: 1.2;
+  white-space: normal;
+  word-break: keep-all;
+}
+
+.measurement-grid .ant-input-number {
+  min-width: 0;
+}
+
+.measurement-grid .ant-input-number-input {
+  padding-inline: 4px;
+}
+
+.measurement-grid-summary-row > td {
+  background: #f3f4f6;
+  color: #374151;
+}
+
+.measurement-grid-mean-row > td {
+  background: #d5eef5;
+}
+
+.measurement-grid-summary-value {
+  font-family: Consolas, "Courier New", monospace;
+  font-variant-numeric: tabular-nums;
+}

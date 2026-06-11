@@ -1,0 +1,96 @@
+.calibration-page {
+  display: grid;
+  gap: 16px;
+}
+
+.calibration-results-card .ant-card-head {
+  align-items: flex-start;
+  gap: 12px;
+  min-height: auto;
+  padding-block: 12px;
+}
+
+.calibration-results-card .ant-card-head-title {
+  min-width: 220px;
+  padding: 0;
+  white-space: normal;
+}
+
+.calibration-results-card .ant-card-extra {
+  margin-inline-start: 0;
+  padding: 0;
+}
+
+.calibration-results-actions {
+  justify-content: flex-end;
+}
+
+.calibration-editor-modal .ant-modal-content {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 32px);
+  padding: 0;
+}
+
+.calibration-editor-modal .ant-modal-header {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 14px 88px 14px 20px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.calibration-editor-modal .ant-modal-body {
+  flex: 1 1 auto;
+  padding: 16px 20px 20px;
+}
+
+.calibration-editor-title {
+  display: block;
+  min-height: 24px;
+}
+
+.calibration-editor-window-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  position: absolute;
+  top: 12px;
+  right: 16px;
+  z-index: 1;
+}
+
+.calibration-editor-window-actions .ant-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+}
+
+@media (max-width: 767px) {
+  .calibration-results-card .ant-card-head {
+    display: grid;
+  }
+
+  .calibration-results-card .ant-card-extra {
+    width: 100%;
+  }
+
+  .calibration-results-actions {
+    justify-content: flex-start;
+  }
+
+  .calibration-editor-modal {
+    margin: 0;
+    max-width: none;
+  }
+
+  .calibration-editor-modal .ant-modal-content {
+    height: 100vh;
+  }
+
+  .calibration-editor-modal .ant-modal-body {
+    padding: 12px;
+  }
+}

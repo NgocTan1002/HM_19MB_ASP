@@ -54,6 +54,25 @@ body {
   white-space: nowrap;
 }
 
+.app-header-right {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 0;
+  gap: 12px;
+}
+
+.app-header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.app-header-actions:empty {
+  display: none;
+}
+
 .session-selector {
   width: min(360px, 48vw);
 }
@@ -61,6 +80,11 @@ body {
 .app-content {
   padding: 24px;
   background: #f3f5f8;
+}
+
+.calibration-draft-float {
+  right: 28px;
+  bottom: 28px;
 }
 
 @media (max-width: 767px) {
@@ -72,7 +96,20 @@ body {
     width: min(220px, 52vw);
   }
 
+  .app-header-right {
+    gap: 8px;
+  }
+
+  .app-header-actions .ant-space {
+    gap: 4px !important;
+  }
+
   .app-content {
     padding: 16px;
+  }
+
+  .calibration-draft-float {
+    right: 18px;
+    bottom: 18px;
   }
 }

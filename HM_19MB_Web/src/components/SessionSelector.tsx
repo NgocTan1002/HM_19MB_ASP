@@ -1,7 +1,6 @@
 import { Select } from 'antd';
 import dayjs from 'dayjs';
 import { useCallback, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useSession } from '../contexts/useSession';
 
 export default function SessionSelector() {
@@ -11,7 +10,6 @@ export default function SessionSelector() {
     sessions,
     setCurrentSessionId,
   } = useSession();
-  const navigate = useNavigate();
 
   useEffect(() => {
     if (currentSessionId === null) {
@@ -40,9 +38,8 @@ export default function SessionSelector() {
   const handleChange = useCallback(
     (sessionId: number) => {
       setCurrentSessionId(sessionId);
-      navigate(`/sessions/${sessionId}/calibration`);
     },
-    [navigate, setCurrentSessionId]
+    [setCurrentSessionId]
   );
 
   return (

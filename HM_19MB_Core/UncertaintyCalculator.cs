@@ -237,7 +237,7 @@ namespace HM_19MB_Core
         {
             public UncertaintyResult()
             {
-                MeasurementData = new double[0, 0];
+                MeasurementData = Array.Empty<double[]>();
                 UValues = Array.Empty<double>();
                 DeltaValues = Array.Empty<double>();
                 ChannelMeans = Array.Empty<double>();
@@ -248,7 +248,7 @@ namespace HM_19MB_Core
             // Dữ liệu đầu vào
             public int NumberOfChannels { get; set; }  // j
             public int NumberOfMeasurements { get; set; }  // n
-            public double[,] MeasurementData { get; set; }  // ti,j (n × j)
+            public double[][] MeasurementData { get; set; }  // ti,j (n x j)
             public double[] UValues { get; set; }  // U1...Uj
             public double[] DeltaValues { get; set; }  // ∂1...∂j
 
@@ -289,7 +289,7 @@ namespace HM_19MB_Core
             {
                 NumberOfChannels = j,
                 NumberOfMeasurements = n,
-                MeasurementData = measurementData,
+                MeasurementData = ToJagged(measurementData),
                 UValues = uValues,
                 DeltaValues = deltaValues,
                 CalculatedAt = DateTime.Now
@@ -336,6 +336,22 @@ namespace HM_19MB_Core
             // Bước 4: Tính uc và U (chỉ phần chuẩn)
             result.Uc = CalculateCombinedUncertainty(result.Uch1, result.Uch2);
             result.U = CalculateExpandedUncertainty(result.Uc);
+
+            return result;
+        }
+
+        private static double[][] ToJagged(double[,] matrix)
+        {
+            int rows = matrix.GetLength(0);
+            int columns = matrix.GetLength(1);
+            var result = new double[rows][];
+
+            for (int row = 0; row < rows; row++)
+            {
+                result[row] = new double[columns];
+                for (int column = 0; column < columns; column++)
+                    result[row][column] = matrix[row, column];
+            }
 
             return result;
         }

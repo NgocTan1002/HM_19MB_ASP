@@ -1,0 +1,40 @@
+.sessions-current-row > td {
+  background: #e6f4ff !important;
+}
+
+.sessions-page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.sessions-page-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.sessions-row-actions {
+  display: flex;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
+
+.sessions-info-card .ant-card-body {
+  padding: 16px;
+}
+
+@media (max-width: 768px) {
+  .sessions-page-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .sessions-page-header-actions {
+    justify-content: flex-start;
+  }
+}

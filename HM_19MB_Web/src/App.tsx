@@ -1,5 +1,6 @@
 import { createBrowserRouter, RouterProvider } from 'react-router-dom';
 import AppLayout from './components/Layout';
+import { DashboardRunProvider } from './contexts/DashboardRunContext';
 import { SessionProvider } from './contexts/SessionContext';
 import Calibration from './pages/Calibration';
 import Dashboard from './pages/Dashboard';
@@ -10,7 +11,9 @@ const router = createBrowserRouter([
     path: '/',
     element: (
       <SessionProvider>
-        <AppLayout />
+        <DashboardRunProvider>
+          <AppLayout />
+        </DashboardRunProvider>
       </SessionProvider>
     ),
     children: [

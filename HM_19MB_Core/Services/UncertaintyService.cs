@@ -103,23 +103,24 @@ namespace HM_19MB_Core.Services
 
             int j = input.J;
             int n = input.N;
+            double[,] measurementMatrix = input.ToMeasurementMatrix();
 
             // ── CT(7)–(9): Tính từng kênh — t̄j, Sj, uch1,j ────────────
             // Sau đó tổng hợp uch1 = √Σ(uch1,j²)
             // Đồng thời tính Max(U), Max(∂), uch2, uc
             // → Dùng CalculateFull() cho toàn bộ khối này.
             var stdResult = UncertaintyCalculator.CalculateFull(
-                input.MeasurementData,
+                measurementMatrix,
                 input.UValues,
                 input.DeltaValues,
                 input.UseUMethod);
 
             // ── CT(1)–(2): t̄_ch, t̄_j hiệu chính ──────────────────────
             var (tch, channelCorrectedMeans) = UncertaintyCalculator
-                .CalculateCorrectedTemperature(input.MeasurementData, input.Corrections);
+                .CalculateCorrectedTemperature(measurementMatrix, input.Corrections);
 
             // ── CT(5): δt_od — độ ổn định ───────────────────────────────
-            double deltaOd = UncertaintyCalculator.CalculateStability(input.MeasurementData);
+            double deltaOd = UncertaintyCalculator.CalculateStability(measurementMatrix);
 
             // ── CT(6): δt_dd — độ đồng đều ──────────────────────────────
             double deltaDd = UncertaintyCalculator.CalculateUniformity(channelCorrectedMeans);

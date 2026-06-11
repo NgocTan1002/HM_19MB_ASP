@@ -1,7 +1,7 @@
 import React, { useCallback, useState } from 'react';
 import { FileExcelOutlined, FileWordOutlined } from '@ant-design/icons';
 import { Button, message, Space } from 'antd';
-import { downloadBlob, reportApi } from '../../services/api';
+import { downloadBlob, getErrorMessage, reportApi } from '../../services/api';
 
 interface ExportButtonsProps {
   sessionId: number | null;
@@ -42,8 +42,8 @@ const ExportButtonsComponent: React.FC<ExportButtonsProps> = ({
       const response = await reportApi.exportExcel(sessionId, kenhCount);
       const blob = assertBlob(response.data);
       downloadBlob(blob, `BaoCao_${sessionId}_${buildTimestamp()}.xlsx`);
-    } catch {
-      message.error('Xuất Excel thất bại');
+    } catch (error) {
+      message.error(getErrorMessage(error, 'Xuat Excel that bai'));
     } finally {
       setExportingExcel(false);
     }
@@ -57,8 +57,8 @@ const ExportButtonsComponent: React.FC<ExportButtonsProps> = ({
       const response = await reportApi.exportWord(sessionId);
       const blob = assertBlob(response.data);
       downloadBlob(blob, `BaoCao_${sessionId}_${buildTimestamp()}.docx`);
-    } catch {
-      message.error('Xuất Word thất bại');
+    } catch (error) {
+      message.error(getErrorMessage(error, 'Xuat Word that bai'));
     } finally {
       setExportingWord(false);
     }
@@ -87,4 +87,3 @@ const ExportButtonsComponent: React.FC<ExportButtonsProps> = ({
 };
 
 export const ExportButtons = React.memo(ExportButtonsComponent);
-

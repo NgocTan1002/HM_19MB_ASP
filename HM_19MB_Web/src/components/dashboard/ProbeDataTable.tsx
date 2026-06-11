@@ -1,15 +1,13 @@
-import { Skeleton, Table, Typography } from 'antd';
+import { Table, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { memo, useMemo } from 'react';
 import type { MeasurementBlock } from '../../types/models';
+import './ProbeDataTable.css';
 
 interface ProbeDataTableProps {
   block: MeasurementBlock | null;
   showTemperature: boolean;
   showHumidity: boolean;
-  showProbes?: boolean[];
-  highlightProbeIndex?: number;
-  onProbeSelect?: (index: number) => void;
 }
 
 type ProbeRowKind = 'probe' | 'average' | 'uniformity' | 'stability';
@@ -19,10 +17,9 @@ interface ProbeRow {
   stt: string;
   name: string;
   kind: ProbeRowKind;
-  probeIndex: number | null;
   temperature: number | null;
   humidity: number | null;
-  timestamp: string;
+  timestamp: string | null;
 }
 
 const { Text } = Typography;
@@ -43,7 +40,11 @@ function formatHumidity(value: number | null): string {
   return value === null ? '---' : value.toFixed(1);
 }
 
-function formatTime(timestamp: string): string {
+function formatTime(timestamp: string | null): string {
+  if (timestamp === null) {
+    return '---';
+  }
+
   const parsed = Date.parse(timestamp);
 
   if (Number.isNaN(parsed)) {
@@ -58,27 +59,28 @@ function formatTime(timestamp: string): string {
   }).format(new Date(parsed));
 }
 
-function buildRows(block: MeasurementBlock): ProbeRow[] {
-  const probeCount = Math.max(0, Math.min(block.probeCount, 10));
-  const avgTemperature = toNullableNumber(block.avgTemperature);
-  const avgHumidity = toNullableNumber(block.avgHumidity);
-  const uniformityTemp = toNullableNumber(block.uniformityTemp);
-  const uniformityHumidity = toNullableNumber(block.uniformityHumidity);
+function buildRows(block: MeasurementBlock | null): ProbeRow[] {
+  const probeCount = block === null ? 0 : Math.max(0, Math.min(block.probeCount, 10));
+  const avgTemperature = block === null ? null : toNullableNumber(block.avgTemperature);
+  const avgHumidity = block === null ? null : toNullableNumber(block.avgHumidity);
+  const uniformityTemp = block === null ? null : toNullableNumber(block.uniformityTemp);
+  const uniformityHumidity =
+    block === null ? null : toNullableNumber(block.uniformityHumidity);
+  const timestamp = block?.timestamp ?? null;
 
   const probeRows = Array.from({ length: 10 }, (_, index): ProbeRow => {
-    const isActiveProbe = index < probeCount;
+    const isActiveProbe = block !== null && index < probeCount;
 
     return {
       key: `probe-${index + 1}`,
       stt: String(index + 1),
       name: `Đầu đo ${index + 1}`,
       kind: 'probe',
-      probeIndex: index,
       temperature: isActiveProbe
         ? toNullableNumber(block.probeTemperatures[index])
         : null,
       humidity: isActiveProbe ? toNullableNumber(block.probeHumidities[index]) : null,
-      timestamp: block.timestamp,
+      timestamp,
     };
   });
 
@@ -89,30 +91,27 @@ function buildRows(block: MeasurementBlock): ProbeRow[] {
       stt: '11',
       name: 'Trung bình',
       kind: 'average',
-      probeIndex: null,
       temperature: avgTemperature,
       humidity: avgHumidity,
-      timestamp: block.timestamp,
+      timestamp,
     },
     {
       key: 'uniformity',
       stt: '12',
       name: 'Độ đồng đều',
       kind: 'uniformity',
-      probeIndex: null,
       temperature: uniformityTemp,
       humidity: uniformityHumidity,
-      timestamp: block.timestamp,
+      timestamp,
     },
     {
       key: 'stability',
       stt: '13',
       name: 'Độ ổn định',
       kind: 'stability',
-      probeIndex: null,
       temperature: null,
       humidity: null,
-      timestamp: block.timestamp,
+      timestamp,
     },
   ];
 }
@@ -121,40 +120,16 @@ function ProbeDataTable({
   block,
   showTemperature,
   showHumidity,
-  showProbes,
-  highlightProbeIndex,
-  onProbeSelect,
 }: ProbeDataTableProps) {
-  const rows = useMemo(() => {
-    if (block === null) {
-      return [];
-    }
+  const rows = useMemo(() => buildRows(block), [block]);
 
-    const nextRows = buildRows(block);
-
-    if (showProbes === undefined) {
-      return nextRows;
-    }
-
-    return nextRows.filter(row => {
-      if (row.kind !== 'probe' || row.probeIndex === null) {
-        return true;
-      }
-
-      return showProbes[row.probeIndex] !== false;
-    });
-  }, [block, showProbes]);
-
-  const hasHumidity = useMemo(() => {
-    if (block === null) {
-      return false;
-    }
-
-    return (
+  const hasHumidity = useMemo(
+    () =>
+      showHumidity ||
       rows.some(row => row.humidity !== null) ||
-      block.stabilityHumidity.trim() !== '---'
-    );
-  }, [block, rows]);
+      (block !== null && block.stabilityHumidity.trim() !== '---'),
+    [block, rows, showHumidity]
+  );
 
   const columns = useMemo<ColumnsType<ProbeRow>>(() => {
     const tableColumns: ColumnsType<ProbeRow> = [
@@ -206,7 +181,7 @@ function ProbeDataTable({
       });
     }
 
-    if (showHumidity && hasHumidity) {
+    if (hasHumidity) {
       tableColumns.push({
         title: 'Độ ẩm (%)',
         dataIndex: 'humidity',
@@ -251,89 +226,14 @@ function ProbeDataTable({
     });
 
     return tableColumns;
-  }, [block, hasHumidity, showHumidity, showTemperature]);
-
-  if (block === null) {
-    return (
-      <Skeleton
-        active
-        aria-label="Đang tải dữ liệu đầu đo"
-        paragraph={{ rows: 10 }}
-        title={false}
-      />
-    );
-  }
+  }, [block, hasHumidity, showTemperature]);
 
   return (
     <div className="probe-data-table" aria-label="Bảng dữ liệu đầu đo real-time">
-      <style>
-        {`
-          .probe-data-table .probe-value-cell {
-            display: inline-block;
-            max-width: 100%;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-            transition: color 0.3s ease, background-color 0.3s ease;
-          }
-
-          .probe-data-table .ant-table {
-            overflow-x: hidden;
-          }
-
-          .probe-data-table .ant-table-cell {
-            padding: 8px 6px !important;
-            white-space: nowrap;
-          }
-
-          .probe-data-table .ant-table-thead > tr > th {
-            font-size: 12px;
-            line-height: 1.25;
-          }
-
-          .probe-data-table .ant-table-tbody > tr > td {
-            font-size: 12px;
-            line-height: 1.35;
-          }
-
-          .probe-data-table .probe-row-selected > td {
-            background: #e6f4ff;
-          }
-
-          .probe-data-table .probe-row-clickable {
-            cursor: pointer;
-          }
-        `}
-      </style>
-
       <Table<ProbeRow>
         columns={columns}
         dataSource={rows}
-        onRow={row => ({
-          onClick: () => {
-            if (row.kind === 'probe' && row.probeIndex !== null) {
-              onProbeSelect?.(row.probeIndex);
-            }
-          },
-          'aria-label': `${row.name} row`,
-        })}
         pagination={false}
-        rowClassName={row => {
-          const classNames: string[] = [];
-
-          if (
-            row.probeIndex !== null &&
-            highlightProbeIndex === row.probeIndex
-          ) {
-            classNames.push('probe-row-selected');
-          }
-
-          if (row.kind === 'probe' && onProbeSelect !== undefined) {
-            classNames.push('probe-row-clickable');
-          }
-
-          return classNames.join(' ');
-        }}
         rowKey="key"
         scroll={{ y: 400 }}
         size="small"

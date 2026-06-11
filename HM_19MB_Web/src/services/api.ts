@@ -17,11 +17,67 @@ const client = axios.create({
     headers: { 'Content-Type': 'application/json' },
 });
 
+export class ApiError extends Error {
+    status?: number;
+    url?: string;
+    data?: unknown;
+
+    constructor(message: string, options: { status?: number; url?: string; data?: unknown } = {}) {
+        super(message);
+        this.name = 'ApiError';
+        this.status = options.status;
+        this.url = options.url;
+        this.data = options.data;
+    }
+}
+
+function readApiMessage(data: unknown): string | null {
+    if (typeof data === 'string' && data.trim().length > 0) {
+        return data.trim();
+    }
+
+    if (data === null || typeof data !== 'object') {
+        return null;
+    }
+
+    const record = data as Record<string, unknown>;
+    const candidates = [record.message, record.error, record.title, record.detail];
+    const message = candidates.find(
+        (value): value is string => typeof value === 'string' && value.trim().length > 0
+    );
+
+    return message?.trim() ?? null;
+}
+
+export function getErrorMessage(error: unknown, fallback = 'Loi he thong'): string {
+    if (error instanceof Error && error.message.trim().length > 0) {
+        return error.message;
+    }
+
+    return fallback;
+}
+
 client.interceptors.response.use(
     res => res,
     err => {
-        console.error('[API Error]', err.response?.status, err.config?.url);
-        return Promise.reject(err);
+        if (!axios.isAxiosError(err)) {
+            return Promise.reject(err);
+        }
+
+        const message =
+            readApiMessage(err.response?.data) ||
+            err.message ||
+            'Khong the ket noi den API';
+
+        console.error('[API Error]', err.response?.status, err.config?.url, message);
+
+        return Promise.reject(
+            new ApiError(message, {
+                status: err.response?.status,
+                url: err.config?.url,
+                data: err.response?.data,
+            })
+        );
     }
 );
 
@@ -69,6 +125,11 @@ export const measurementRunApi = {
         client.post<{ sessionId: number; deviceId: string; active: boolean }>(
             '/api/measurement-runs/start',
             { deviceId, metadata }
+        ),
+
+    startExisting: (deviceId: string, sessionId: number) =>
+        client.post<{ sessionId: number; deviceId: string; active: boolean }>(
+            `/api/measurement-runs/${encodeURIComponent(deviceId)}/sessions/${sessionId}/start`
         ),
 
     stop: (deviceId: string) =>

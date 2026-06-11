@@ -8,10 +8,12 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test:phase1": "tsx src/tests/phase1.smoke.ts"
+    "test:phase1": "tsx src/tests/phase1.smoke.ts",
+    "test:unit": "vitest run"
   },
   "dependencies": {
     "@microsoft/signalr": "^10.0.0",
+    "@tanstack/react-query": "^5.101.0",
     "antd": "^6.4.3",
     "axios": "^1.16.1",
     "dayjs": "^1.11.21",
@@ -33,6 +35,7 @@
     "tsx": "^4.22.3",
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.59.2",
-    "vite": "^8.0.12"
+    "vite": "^8.0.12",
+    "vitest": "^4.1.8"
   }
 }

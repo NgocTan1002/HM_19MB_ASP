@@ -5,59 +5,91 @@ Console.WriteLine("=== HM Serial Agent ===");
 
 string apiBase = args.Length > 0 ? args[0] : "http://localhost:5135";
 string portName = args.Length > 1 ? args[1] : "COM5";
-int sessionId = args.Length > 2 ? int.Parse(args[2]) : 0;
+int fixedSessionId = 0;
+string deviceId = "u01";
 
-if (sessionId == 0)
+if (args.Length > 2)
 {
-    Console.WriteLine("Chưa có sessionId.");
-    Console.WriteLine("Hãy tạo hoặc chọn phiên đo trên web trước, sau đó chạy Agent với ID phiên đó.");
-    Console.WriteLine("Ví dụ:");
-    Console.WriteLine("  dotnet run --project HM_19MB_Agent -- http://localhost:5135 COM5 12");
-    return;
+    if (int.TryParse(args[2], out var parsedSessionId) && parsedSessionId > 0)
+    {
+        fixedSessionId = parsedSessionId;
+        deviceId = args.Length > 3 ? args[3] : deviceId;
+    }
+    else
+    {
+        deviceId = args[2];
+    }
 }
 
-Console.WriteLine($"Kết nối {portName} → {apiBase}/api/sessions/{sessionId}/measurements");
+Console.WriteLine($"API: {apiBase}");
+Console.WriteLine($"COM: {portName}");
+
+if (fixedSessionId > 0)
+{
+    Console.WriteLine($"Mode: fixed session {fixedSessionId}");
+}
+else
+{
+    Console.WriteLine($"Mode: device-controlled ({deviceId})");
+    Console.WriteLine("Web se gan device vao phien do khi bam Ket noi/Ket noi lai.");
+}
 
 using var reader = new SerialReader();
 using var client = new HttpClient();
 
-var measurementUrl = $"{apiBase}/api/sessions/{sessionId}/measurements";
-var statusUrl = $"{measurementUrl}/status";
-var isActive = false;
 var statusCheckedAt = DateTime.MinValue;
+var cachedActiveSessionId = 0;
 var waitingLogged = false;
+var lastLoggedSessionId = 0;
 
-async Task<bool> IsMeasurementActiveAsync()
+async Task<int?> GetActiveSessionIdAsync()
 {
     if ((DateTime.UtcNow - statusCheckedAt).TotalMilliseconds < 1000)
-        return isActive;
+    {
+        return cachedActiveSessionId > 0 ? cachedActiveSessionId : null;
+    }
 
     statusCheckedAt = DateTime.UtcNow;
 
     try
     {
-        var status = await client.GetFromJsonAsync<MeasurementStatus>(statusUrl);
-        isActive = status?.Active == true;
-
-        if (!isActive && !waitingLogged)
+        if (fixedSessionId > 0)
         {
-            Console.WriteLine("Đang chờ web bấm Kết nối để bắt đầu ghi dữ liệu...");
+            var statusUrl = $"{apiBase}/api/sessions/{fixedSessionId}/measurements/status";
+            var status = await client.GetFromJsonAsync<MeasurementStatus>(statusUrl);
+            cachedActiveSessionId = status?.Active == true ? fixedSessionId : 0;
+        }
+        else
+        {
+            var statusUrl =
+                $"{apiBase}/api/measurement-runs/{Uri.EscapeDataString(deviceId)}/status";
+            var status = await client.GetFromJsonAsync<MeasurementRunStatus>(statusUrl);
+            cachedActiveSessionId =
+                status?.Active == true && status.SessionId.HasValue
+                    ? status.SessionId.Value
+                    : 0;
+        }
+
+        if (cachedActiveSessionId <= 0 && !waitingLogged)
+        {
+            Console.WriteLine("Dang cho web bam Ket noi de bat dau ghi du lieu...");
             waitingLogged = true;
         }
 
-        if (isActive && waitingLogged)
+        if (cachedActiveSessionId > 0 && cachedActiveSessionId != lastLoggedSessionId)
         {
-            Console.WriteLine("Phiên đo đã active. Bắt đầu gửi dữ liệu.");
+            Console.WriteLine($"Phien do {cachedActiveSessionId} da active. Bat dau gui du lieu.");
             waitingLogged = false;
+            lastLoggedSessionId = cachedActiveSessionId;
         }
 
-        return isActive;
+        return cachedActiveSessionId > 0 ? cachedActiveSessionId : null;
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"Lỗi kiểm tra trạng thái phiên đo: {ex.Message}");
-        isActive = false;
-        return false;
+        Console.WriteLine($"Loi kiem tra trang thai phien do: {ex.Message}");
+        cachedActiveSessionId = 0;
+        return null;
     }
 }
 
@@ -65,23 +97,30 @@ reader.BlockReceived += async (_, block) =>
 {
     try
     {
-        if (!await IsMeasurementActiveAsync())
+        var activeSessionId = await GetActiveSessionIdAsync();
+        if (!activeSessionId.HasValue)
+        {
             return;
+        }
 
         var payload = CreateJsonSafeBlock(block);
+        var measurementUrl =
+            $"{apiBase}/api/sessions/{activeSessionId.Value}/measurements";
         await client.PostAsJsonAsync(measurementUrl, payload);
-        Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] Gửi: T={block.AvgTemperature:F1}°C");
+        Console.WriteLine(
+            $"[{DateTime.Now:HH:mm:ss}] Gui vao phien {activeSessionId.Value}: T={block.AvgTemperature:F1}C"
+        );
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"Lỗi gửi: {ex.Message}");
+        Console.WriteLine($"Loi gui: {ex.Message}");
     }
 };
 
 reader.ErrorOccurred += (_, msg) => Console.WriteLine($"Serial error: {msg}");
 reader.Connect(portName);
 
-Console.WriteLine("Đang chạy... Nhấn Ctrl+C để dừng.");
+Console.WriteLine("Dang chay... Nhan Ctrl+C de dung.");
 await Task.Delay(Timeout.Infinite);
 
 static MeasurementBlock CreateJsonSafeBlock(MeasurementBlock source)
@@ -118,3 +157,4 @@ static float ToFiniteOrZero(float value)
     => float.IsFinite(value) ? value : 0f;
 
 record MeasurementStatus(int SessionId, bool Active);
+record MeasurementRunStatus(int? SessionId, string DeviceId, bool Active);

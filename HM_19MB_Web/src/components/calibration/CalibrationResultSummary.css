@@ -1,0 +1,71 @@
+.calibration-result-summary {
+  display: grid;
+  gap: 8px;
+}
+
+.calibration-result-status {
+  min-height: 20px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.calibration-result-panels {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1.35fr;
+  gap: 6px;
+}
+
+.calibration-result-panel {
+  min-width: 0;
+  margin: 0;
+  padding: 18px 12px 12px;
+  border: 1px solid #d9d9d9;
+  background: #ffffff;
+}
+
+.calibration-result-panel legend {
+  padding: 0 6px;
+  color: #111827;
+  font-weight: 700;
+}
+
+.calibration-result-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: baseline;
+  min-height: 34px;
+  color: #374151;
+}
+
+.calibration-result-row strong {
+  color: #000000;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.calibration-result-final {
+  display: grid;
+  align-items: center;
+}
+
+.calibration-result-final-content {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: center;
+}
+
+.calibration-result-final-content strong {
+  color: #008000;
+  font-size: 24px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+@media (max-width: 991px) {
+  .calibration-result-panels {
+    grid-template-columns: 1fr;
+  }
+}

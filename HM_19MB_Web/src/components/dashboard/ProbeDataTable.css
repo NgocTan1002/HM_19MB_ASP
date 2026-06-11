@@ -1,0 +1,35 @@
+.probe-data-table .probe-value-cell {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: color 0.3s ease, background-color 0.3s ease;
+}
+
+.probe-data-table .ant-table {
+  overflow-x: hidden;
+}
+
+.probe-data-table .ant-table-cell {
+  padding: 8px 6px !important;
+  white-space: nowrap;
+}
+
+.probe-data-table .ant-table-thead > tr > th {
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.probe-data-table .ant-table-tbody > tr > td {
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.probe-data-table .probe-row-selected > td {
+  background: #e6f4ff;
+}
+
+.probe-data-table .probe-row-clickable {
+  cursor: pointer;
+}

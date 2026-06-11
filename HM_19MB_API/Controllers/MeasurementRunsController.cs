@@ -36,6 +36,26 @@ namespace HM_19MB_API.Controllers
             });
         }
 
+        [HttpPost("{deviceId}/sessions/{sessionId}/start")]
+        public async Task<IActionResult> StartExistingSession(string deviceId, int sessionId)
+        {
+            var normalizedDeviceId = deviceId.Trim();
+            if (string.IsNullOrWhiteSpace(normalizedDeviceId))
+            {
+                return BadRequest(new { error = "DeviceId is required" });
+            }
+
+            await DatabaseService.EnsureSchemaAsync();
+            _runState.StartDeviceSession(normalizedDeviceId, sessionId);
+
+            return Ok(new
+            {
+                sessionId,
+                deviceId = normalizedDeviceId,
+                active = true
+            });
+        }
+
         [HttpPost("{deviceId}/stop")]
         public IActionResult Stop(string deviceId)
         {

@@ -19,14 +19,13 @@ import type {
   Props as LegendContentProps,
 } from 'recharts/types/component/DefaultLegendContent';
 import type { MeasurementBlock } from '../../types/models';
+import './TemperatureChart.css';
 
 interface TemperatureChartProps {
   newBlock: MeasurementBlock | null;
   historicalData?: HistoricalChartPoint[];
   showTemperature: boolean;
   showHumidity: boolean;
-  showProbes: boolean[];
-  onToggleProbe: (index: number) => void;
   height?: number;
 }
 
@@ -209,8 +208,6 @@ export default function TemperatureChart({
   historicalData = [],
   showTemperature,
   showHumidity,
-  showProbes,
-  onToggleProbe,
   height = 350,
 }: TemperatureChartProps) {
   const bufferRef = useRef<ChartPoint[]>([]);
@@ -373,15 +370,6 @@ export default function TemperatureChart({
     setZoomEnd(null);
   }, [zoomEnd, zoomStart]);
 
-  const handleLegendClick = useCallback((entry: { dataKey?: string | number }) => {
-    const dataKey = String(entry.dataKey ?? '');
-    const match = /^probeTemp(\d+)$/.exec(dataKey);
-
-    if (match !== null) {
-      onToggleProbe(Number(match[1]));
-    }
-  }, [onToggleProbe]);
-
   const renderLegend = useCallback((props: LegendContentProps) => {
     const payload = props.payload ?? [];
 
@@ -391,7 +379,6 @@ export default function TemperatureChart({
           <button
             className="temperature-chart-legend-item"
             key={String(getLegendDataKey(entry) ?? entry.value)}
-            onClick={() => handleLegendClick({ dataKey: getLegendDataKey(entry) })}
             type="button"
           >
             <span
@@ -403,7 +390,7 @@ export default function TemperatureChart({
         ))}
       </div>
     );
-  }, [handleLegendClick]);
+  }, []);
 
   const referenceArea =
     zoomStart !== null && zoomEnd !== null ? (
@@ -416,73 +403,6 @@ export default function TemperatureChart({
 
   return (
     <section className="temperature-chart" aria-label="Biểu đồ nhiệt độ - độ ẩm">
-      <style>
-        {`
-          .temperature-chart {
-            width: 100%;
-          }
-
-          .temperature-chart-toolbar {
-            display: flex;
-            justify-content: flex-end;
-            margin-bottom: 12px;
-          }
-
-          .temperature-chart-tooltip {
-            min-width: 240px;
-            max-height: 360px;
-            overflow: auto;
-            padding: 10px 12px;
-            border: 1px solid #d9d9d9;
-            background: #ffffff;
-            box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
-          }
-
-          .temperature-chart-tooltip-list {
-            display: grid;
-            gap: 6px;
-            margin-top: 8px;
-          }
-
-          .temperature-chart-tooltip-row {
-            display: grid;
-            grid-template-columns: 10px 1fr auto;
-            align-items: center;
-            gap: 8px;
-            font-size: 12px;
-          }
-
-          .temperature-chart-tooltip-dot,
-          .temperature-chart-legend-dot {
-            display: inline-block;
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-          }
-
-          .temperature-chart-legend {
-            display: flex;
-            flex-wrap: wrap;
-            justify-content: center;
-            gap: 8px 12px;
-            padding-top: 8px;
-          }
-
-          .temperature-chart-legend-item {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            border: 0;
-            background: transparent;
-            color: #374151;
-            cursor: pointer;
-            font: inherit;
-            font-size: 12px;
-            padding: 2px 4px;
-          }
-        `}
-      </style>
-
       <div className="temperature-chart-toolbar">
         <Space>
           {zoomDomain !== null && (
@@ -537,10 +457,6 @@ export default function TemperatureChart({
 
           {showTemperature &&
             Array.from({ length: 10 }, (_, index) => {
-              if (showProbes[index] === false) {
-                return null;
-              }
-
               return (
                 <Line
                   connectNulls

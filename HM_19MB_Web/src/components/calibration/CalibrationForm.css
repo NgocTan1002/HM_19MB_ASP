@@ -1,0 +1,34 @@
+.calibration-worksheet {
+  display: grid;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  border: 1px solid #d9d9d9;
+  background: #ffffff;
+  overflow: hidden;
+}
+
+.calibration-worksheet-section {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 14px 16px;
+  border-bottom: 1px solid #d9d9d9;
+}
+
+.calibration-worksheet-label {
+  color: #4b5563;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 1.2;
+}
+
+.calibration-section-note {
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.calibration-actions {
+  padding: 14px 16px;
+}

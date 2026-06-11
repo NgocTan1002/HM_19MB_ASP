@@ -1,0 +1,203 @@
+.calibration-config {
+  display: grid;
+  gap: 10px;
+}
+
+.calibration-config .ant-form-item {
+  margin-bottom: 0;
+}
+
+.calibration-config-primary-row {
+  display: grid;
+  grid-template-columns: 176px 96px 96px;
+  gap: 12px 18px;
+  align-items: end;
+  max-width: 520px;
+}
+
+.calibration-config-parameter-row {
+  display: grid;
+  grid-template-columns: repeat(4, max-content);
+  gap: 10px 28px;
+  align-items: center;
+  padding-top: 4px;
+  border-top: 1px solid #e5e7eb;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.calibration-config-method-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-height: 32px;
+}
+
+.calibration-correction-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 16px;
+}
+
+.calibration-correction-label {
+  color: #374151;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.calibration-correction-list {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(126px, 1fr));
+  min-width: 0;
+  max-width: 760px;
+  gap: 10px 14px;
+}
+
+.calibration-correction-item {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  color: #374151;
+  font-size: 14px;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.calibration-correction-item > span {
+  flex: 0 0 auto;
+}
+
+.calibration-correction-item .ant-input-number {
+  width: 76px;
+}
+
+.calibration-field-point {
+  width: 176px;
+}
+
+.calibration-field-count {
+  width: 96px;
+}
+
+.calibration-config .ant-input-number,
+.calibration-config .ant-input-number-group-wrapper {
+  width: 100%;
+}
+
+.calibration-inline-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.calibration-inline-field > span {
+  flex: 0 0 auto;
+  color: #111827;
+  font-size: 14px;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+.calibration-inline-field .ant-input-number {
+  flex: 0 0 96px;
+  width: 96px;
+}
+
+.calibration-config .calibration-correction-item .ant-input-number {
+  flex: 0 0 86px;
+  width: 86px;
+}
+
+.calibration-label-unit {
+  white-space: nowrap;
+}
+
+.calibration-method-label {
+  color: #374151;
+  font-size: 14px;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+.calibration-channel-table .calibration-computed-cell {
+  background: #f3f4f6;
+  color: #6b7280;
+}
+
+.calibration-channel-table .ant-table-thead .calibration-computed-cell {
+  background: #eef2f7;
+}
+
+.calibration-mono {
+  font-family: Consolas, "Courier New", monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 767px) {
+  .calibration-config-primary-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    max-width: none;
+  }
+
+  .calibration-config-parameter-row {
+    grid-template-columns: repeat(2, max-content);
+  }
+
+  .calibration-field-point,
+  .calibration-field-count {
+    width: min(100%, 176px);
+  }
+
+  .calibration-inline-field {
+    min-width: 0;
+  }
+
+  .calibration-correction-list {
+    grid-template-columns: repeat(3, minmax(126px, 1fr));
+    max-width: none;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1180px) {
+  .calibration-config-parameter-row {
+    grid-template-columns: repeat(2, max-content);
+  }
+
+  .calibration-correction-list {
+    grid-template-columns: repeat(4, minmax(126px, 1fr));
+    max-width: 620px;
+  }
+}
+
+@media (max-width: 480px) {
+  .calibration-config-primary-row {
+    grid-template-columns: 1fr;
+  }
+
+  .calibration-config-parameter-row {
+    grid-template-columns: 1fr;
+    overflow-x: visible;
+  }
+
+  .calibration-config-method-row {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .calibration-correction-row {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .calibration-inline-field {
+    justify-content: space-between;
+  }
+
+  .calibration-correction-list {
+    grid-template-columns: repeat(2, minmax(126px, 1fr));
+  }
+}

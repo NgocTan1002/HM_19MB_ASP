@@ -1,0 +1,42 @@
+.dashboard-controls {
+  width: 100%;
+}
+
+.dashboard-controls .ant-card-body {
+  padding: 12px;
+}
+
+.dashboard-controls-grid {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.35fr) minmax(420px, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.dashboard-controls-section {
+  width: 100%;
+}
+
+.dashboard-controls-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+@media (max-width: 1200px) {
+  .dashboard-controls-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 767px) {
+  .dashboard-controls .ant-card-body {
+    padding: 8px;
+  }
+
+  .dashboard-controls-grid {
+    grid-template-columns: 1fr;
+  }
+
+}
