@@ -52,11 +52,11 @@ const DashboardRunContext = createContext<DashboardRunContextValue | undefined>(
 );
 
 function isValidNumber(value: number | undefined | null): value is number {
-  return typeof value === 'number' && !Number.isNaN(value);
+  return typeof value === 'number' && Number.isFinite(value);
 }
 
-function toNullableNumber(value: number | undefined): number | null {
-  return isValidNumber(value) && value !== 0 ? value : null;
+function toNullableNumber(value: number | undefined | null): number | null {
+  return isValidNumber(value) ? value : null;
 }
 
 function blockToChartDataPoint(block: MeasurementBlock): ChartDataPoint {
@@ -72,7 +72,9 @@ function blockToChartDataPoint(block: MeasurementBlock): ChartDataPoint {
         ? toNullableNumber(block.probeHumidities[index])
         : null
     ),
-    avgTemp: isValidNumber(block.avgTemperature) ? block.avgTemperature : 0,
+    avgTemp: isValidNumber(block.avgTemperature)
+      ? block.avgTemperature
+      : Number.NaN,
     avgHum: toNullableNumber(block.avgHumidity),
   };
 }
@@ -162,7 +164,7 @@ export function DashboardRunProvider({ children }: DashboardRunProviderProps) {
     setChartBuffer(points => appendChartPoint(points, block));
   }, []);
 
-  const stopClient = useCallback(async () => {
+  const disconnectClient = useCallback(async () => {
     const client = clientRef.current;
     clientRef.current = null;
 
@@ -171,16 +173,7 @@ export function DashboardRunProvider({ children }: DashboardRunProviderProps) {
       await client.stop();
     }
 
-    const activeRunSessionId = activeRunSessionIdRef.current;
     activeRunSessionIdRef.current = null;
-
-    if (activeRunSessionId !== null) {
-      try {
-        await measurementApi.stop(activeRunSessionId);
-      } catch (err: unknown) {
-        console.warn('[Dashboard] Stop measurement session failed:', err);
-      }
-    }
 
     setConnectionState('disconnected');
   }, []);
@@ -225,7 +218,6 @@ export function DashboardRunProvider({ children }: DashboardRunProviderProps) {
   useEffect(() => {
     return () => {
       const client = clientRef.current;
-      const activeRunSessionId = activeRunSessionIdRef.current;
       clientRef.current = null;
       activeRunSessionIdRef.current = null;
 
@@ -234,9 +226,6 @@ export function DashboardRunProvider({ children }: DashboardRunProviderProps) {
         void client.stop();
       }
 
-      if (activeRunSessionId !== null) {
-        void measurementApi.stop(activeRunSessionId);
-      }
     };
   }, []);
 
@@ -309,6 +298,53 @@ export function DashboardRunProvider({ children }: DashboardRunProviderProps) {
     };
   }, [currentSessionId]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    async function connectIfSessionActive(sessionId: number) {
+      if (activeRunSessionIdRef.current === sessionId) {
+        return;
+      }
+
+      try {
+        if (
+          activeRunSessionIdRef.current !== null &&
+          activeRunSessionIdRef.current !== sessionId
+        ) {
+          await disconnectClient();
+        }
+
+        const response = await measurementApi.status(sessionId);
+
+        if (cancelled || !response.data.active) {
+          return;
+        }
+
+        if (cancelled || activeRunSessionIdRef.current === sessionId) {
+          return;
+        }
+
+        await connectClient(sessionId);
+      } catch (err: unknown) {
+        if (cancelled) {
+          return;
+        }
+
+        console.warn('[Dashboard] Auto-connect active session failed:', err);
+      }
+    }
+
+    if (currentSessionId !== null) {
+      void connectIfSessionActive(currentSessionId);
+    } else if (activeRunSessionIdRef.current !== null) {
+      void disconnectClient();
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [connectClient, currentSessionId, disconnectClient]);
+
   const handleReconnect = useCallback(() => {
     async function reconnect() {
       const targetSessionId =
@@ -327,11 +363,10 @@ export function DashboardRunProvider({ children }: DashboardRunProviderProps) {
           activeRunSessionIdRef.current !== null &&
           activeRunSessionIdRef.current !== targetSessionId
         ) {
-          await stopClient();
+          await disconnectClient();
         }
 
         await measurementRunApi.startExisting(targetSessionId);
-        activeRunSessionIdRef.current = targetSessionId;
         await connectClient(targetSessionId);
       } catch (err: unknown) {
         activeRunSessionIdRef.current = null;
@@ -343,7 +378,7 @@ export function DashboardRunProvider({ children }: DashboardRunProviderProps) {
     }
 
     void reconnect();
-  }, [connectClient, stopClient]);
+  }, [connectClient, disconnectClient]);
 
   const handleStartRun = useCallback(
     async (metadata: SessionMetadata) => {
@@ -352,7 +387,7 @@ export function DashboardRunProvider({ children }: DashboardRunProviderProps) {
       setConnectionError(null);
 
       try {
-        await stopClient();
+        await disconnectClient();
 
         const response = await measurementRunApi.start(metadata);
         const newSessionId = response.data.sessionId;
@@ -377,19 +412,19 @@ export function DashboardRunProvider({ children }: DashboardRunProviderProps) {
     },
     [
       connectClient,
+      disconnectClient,
       refreshSessions,
       setCurrentSessionId,
-      stopClient,
     ]
   );
 
   const handleDisconnect = useCallback(() => {
-    void stopClient();
+    void disconnectClient();
     setConnectionError(null);
     setStartError(null);
     setCurrentBlock(null);
     setLastReceivedAt(null);
-  }, [stopClient]);
+  }, [disconnectClient]);
 
   const showTemperature =
     hasTemperatureData(currentBlock) || hasTemperatureHistory(chartBuffer);

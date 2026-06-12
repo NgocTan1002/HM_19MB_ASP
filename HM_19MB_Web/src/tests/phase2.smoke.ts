@@ -111,6 +111,9 @@ function getHealthStatus(
   connectionState: ConnectionState,
   now: Date
 ): HealthStatus {
+  void lastReceivedAt;
+  void now;
+
   if (connectionState === 'connecting') {
     return 'CONNECTING';
   }
@@ -123,23 +126,7 @@ function getHealthStatus(
     return 'WARNING';
   }
 
-  if (lastReceivedAt === null) {
-    return 'CONNECTING';
-  }
-
-  const elapsedSeconds = Math.floor(
-    (now.getTime() - lastReceivedAt.getTime()) / 1000
-  );
-
-  if (elapsedSeconds <= 10) {
-    return 'ONLINE';
-  }
-
-  if (elapsedSeconds <= 30) {
-    return 'WARNING';
-  }
-
-  return 'OFFLINE';
+  return 'ONLINE';
 }
 
 function testMockFullBlock(): void {
@@ -185,13 +172,16 @@ function testBufferLimit(): void {
   );
 }
 
-function testDisconnect35sOffline(): void {
+function testConnectedWithoutRecentDataStaysOnline(): void {
   const now = new Date(Date.UTC(2026, 4, 29, 8, 0, 35));
   const lastReceivedAt = new Date(Date.UTC(2026, 4, 29, 8, 0, 0));
 
   const status = getHealthStatus(lastReceivedAt, 'connected', now);
 
-  assert(status === 'OFFLINE', `Expected OFFLINE after 35s, got ${status}`);
+  assert(
+    status === 'ONLINE',
+    `Expected ONLINE while connection is active without recent data, got ${status}`
+  );
 }
 
 function testReconnectStateWarningThenOnline(): void {
@@ -225,7 +215,7 @@ function main(): void {
     runTest('mock MeasurementBlock with full temperature and humidity data', testMockFullBlock),
     runTest('mock MeasurementBlock without humidity data', testMockNoHumidityBlock),
     runTest('simulate 750 blocks and keep only 720 points', testBufferLimit),
-    runTest('simulate disconnect/stale data for 35s and resolve OFFLINE', testDisconnect35sOffline),
+    runTest('keep connected status online without recent data', testConnectedWithoutRecentDataStaysOnline),
     runTest('simulate reconnect state transitions', testReconnectStateWarningThenOnline),
   ];
 

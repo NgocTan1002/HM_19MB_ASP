@@ -19,7 +19,6 @@ function getElapsedSeconds(lastReceivedAt: Date | null, now: Date): number | nul
 }
 
 function getHealthStatus(
-  elapsedSeconds: number | null,
   connectionState: HealthIndicatorProps['connectionState'],
   sessionId: number | null
 ): HealthStatus {
@@ -27,29 +26,20 @@ function getHealthStatus(
   if (connectionState === 'connecting') return 'connecting';
   if (connectionState === 'reconnecting') return 'warning';
   if (connectionState === 'disconnected') return 'offline';
-  if (elapsedSeconds === null) return 'connecting';
-  if (elapsedSeconds <= 10) return 'online';
-  if (elapsedSeconds <= 30) return 'warning';
-  return 'offline';
+  return 'online';
 }
 
-function getStatusText(status: HealthStatus, elapsedSeconds: number | null): string {
+function getStatusText(status: HealthStatus): string {
   if (status === 'idle') return 'Chưa chọn phiên';
   if (status === 'connecting') return 'Đang kết nối...';
-  if (status === 'online') return 'Đang nhận dữ liệu';
-  if (status === 'warning') {
-    return elapsedSeconds === null
-      ? 'Đang kết nối lại...'
-      : `Mất kết nối ${elapsedSeconds}s`;
-  }
-  return elapsedSeconds === null
-    ? 'Mất kết nối'
-    : `Mất kết nối ${elapsedSeconds}s`;
+  if (status === 'online') return 'Đang kết nối';
+  if (status === 'warning') return 'Đang kết nối lại...';
+  return 'Mất kết nối';
 }
 
 function getCompactText(status: HealthStatus): string {
   if (status === 'online') return 'Online';
-  if (status === 'warning') return 'Chậm';
+  if (status === 'warning') return 'Kết nối lại';
   if (status === 'offline') return 'Offline';
   if (status === 'connecting') return 'Đang nối';
   return 'Chưa chọn';
@@ -89,11 +79,11 @@ export default function HealthIndicator({
   );
 
   const status = useMemo(
-    () => getHealthStatus(elapsedSeconds, connectionState, sessionId),
-    [connectionState, elapsedSeconds, sessionId]
+    () => getHealthStatus(connectionState, sessionId),
+    [connectionState, sessionId]
   );
 
-  const statusText = getStatusText(status, elapsedSeconds);
+  const statusText = getStatusText(status);
   const compactText = getCompactText(status);
   const updatedText = getUpdatedText(elapsedSeconds);
   const badgeStatus = getBadgeStatus(status);

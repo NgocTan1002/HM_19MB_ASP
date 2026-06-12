@@ -8,6 +8,10 @@
   margin-bottom: 12px;
 }
 
+.temperature-chart-toolbar-controls {
+  justify-content: flex-end;
+}
+
 .temperature-chart-tooltip {
   min-width: 240px;
   max-height: 360px;

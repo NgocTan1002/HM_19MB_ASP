@@ -25,11 +25,11 @@ interface ProbeRow {
 const { Text } = Typography;
 
 function isValidNumber(value: number | undefined): value is number {
-  return typeof value === 'number' && !Number.isNaN(value);
+  return typeof value === 'number' && Number.isFinite(value);
 }
 
 function toNullableNumber(value: number | undefined): number | null {
-  return isValidNumber(value) && value !== 0 ? value : null;
+  return isValidNumber(value) ? value : null;
 }
 
 function formatTemperature(value: number | null): string {

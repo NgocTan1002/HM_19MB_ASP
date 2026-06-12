@@ -1,13 +1,12 @@
 import { ClearOutlined, ZoomOutOutlined } from '@ant-design/icons';
-import { Button, Space, Typography } from 'antd';
+import { Button, Segmented, Space, Switch, Typography } from 'antd';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  type MouseHandlerDataParam,
+  Brush,
   CartesianGrid,
   ComposedChart,
   Legend,
   Line,
-  ReferenceArea,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -54,11 +53,28 @@ interface FlatChartPoint {
 }
 
 type ChartTooltipProps = TooltipContentProps;
+type TimeWindowValue = '60000' | '300000' | '900000' | 'all' | 'custom';
+
+interface BrushRange {
+  startIndex: number;
+  endIndex: number;
+}
 
 const { Text } = Typography;
 
 const MAX_CHART_POINTS = 720;
 const RENDER_THROTTLE_MS = 500;
+const DEFAULT_TIME_WINDOW: TimeWindowValue = 'all';
+
+const BASE_TIME_WINDOW_OPTIONS: Array<{
+  label: string;
+  value: TimeWindowValue;
+}> = [
+  { label: '1 phút', value: '60000' },
+  { label: '5 phút', value: '300000' },
+  { label: '15 phút', value: '900000' },
+  { label: 'Toàn bộ', value: 'all' },
+];
 
 const PROBE_COLORS = [
   '#FF6B6B',
@@ -73,12 +89,12 @@ const PROBE_COLORS = [
   '#85C1E9',
 ];
 
-function isValidNumber(value: number | undefined): value is number {
-  return typeof value === 'number' && !Number.isNaN(value);
+function isValidNumber(value: number | null | undefined): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
 }
 
-function toNullableNumber(value: number | undefined): number | null {
-  return isValidNumber(value) && value !== 0 ? value : null;
+function toNullableNumber(value: number | null | undefined): number | null {
+  return isValidNumber(value) ? value : null;
 }
 
 function parseTimestamp(timestamp: string): number {
@@ -117,7 +133,7 @@ function createChartPointFromHistory(point: HistoricalChartPoint): ChartPoint {
   return {
     timestamp: parseTimestamp(point.timestamp),
     avgTemperature: toNullableNumber(point.avgTemp),
-    avgHumidity: point.avgHum,
+    avgHumidity: toNullableNumber(point.avgHum),
     probeTemperatures: Array.from({ length: 10 }, (_, index) =>
       toNullableNumber(point.temps[index] ?? undefined)
     ),
@@ -140,6 +156,61 @@ function flattenChartPoint(point: ChartPoint): FlatChartPoint {
   }
 
   return flatPoint;
+}
+
+function dedupeChartPoints(points: FlatChartPoint[]): FlatChartPoint[] {
+  const byTimestamp = new Map<number, FlatChartPoint>();
+
+  points.forEach(point => {
+    byTimestamp.set(point.timestamp, point);
+  });
+
+  return Array.from(byTimestamp.values()).sort(
+    (left, right) => left.timestamp - right.timestamp
+  );
+}
+
+function clampIndex(index: number, dataLength: number): number {
+  return Math.min(Math.max(index, 0), Math.max(dataLength - 1, 0));
+}
+
+function getFullBrushRange(dataLength: number): BrushRange | null {
+  return dataLength === 0 ? null : { startIndex: 0, endIndex: dataLength - 1 };
+}
+
+function areBrushRangesEqual(
+  left: BrushRange | null,
+  right: BrushRange | null
+): boolean {
+  if (left === null || right === null) {
+    return left === right;
+  }
+
+  return left.startIndex === right.startIndex && left.endIndex === right.endIndex;
+}
+
+function getPresetBrushRange(
+  data: FlatChartPoint[],
+  timeWindowValue: TimeWindowValue,
+  anchorIndex?: number | null
+): BrushRange | null {
+  if (data.length === 0) {
+    return null;
+  }
+
+  if (timeWindowValue === 'all' || timeWindowValue === 'custom') {
+    return getFullBrushRange(data.length);
+  }
+
+  const endIndex = clampIndex(anchorIndex ?? data.length - 1, data.length);
+  const endTimestamp = data[endIndex].timestamp;
+  const startTimestamp = endTimestamp - Number(timeWindowValue);
+  const foundIndex = data.findIndex(point => point.timestamp >= startTimestamp);
+
+  return {
+    startIndex: foundIndex === -1 ? 0 : foundIndex,
+    endIndex,
+  };
 }
 
 function formatTemperature(value: unknown): string {
@@ -226,9 +297,10 @@ export default function TemperatureChart({
   const lastRenderAtRef = useRef(0);
   const renderTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [dataSnapshot, setDataSnapshot] = useState<ChartPoint[]>([]);
-  const [zoomStart, setZoomStart] = useState<number | null>(null);
-  const [zoomEnd, setZoomEnd] = useState<number | null>(null);
-  const [zoomDomain, setZoomDomain] = useState<[number, number] | null>(null);
+  const [brushRange, setBrushRange] = useState<BrushRange | null>(null);
+  const [timeWindowValue, setTimeWindowValue] =
+    useState<TimeWindowValue>(DEFAULT_TIME_WINDOW);
+  const [followRealtime, setFollowRealtime] = useState(true);
 
   const commitBufferSnapshot = useCallback(() => {
     setDataSnapshot([...bufferRef.current]);
@@ -290,9 +362,12 @@ export default function TemperatureChart({
       }
 
       setDataSnapshot(history);
-      setZoomStart(null);
-      setZoomEnd(null);
-      setZoomDomain(null);
+
+      if (history.length === 0) {
+        setBrushRange(null);
+        setTimeWindowValue(DEFAULT_TIME_WINDOW);
+        setFollowRealtime(true);
+      }
     }, 0);
 
     return () => {
@@ -301,100 +376,147 @@ export default function TemperatureChart({
     };
   }, [historicalData]);
 
-  const chartData = useMemo(() => {
-    const data = dataSnapshot.map(flattenChartPoint);
+  const fullChartData = useMemo(
+    () => dedupeChartPoints(dataSnapshot.map(flattenChartPoint)),
+    [dataSnapshot]
+  );
 
-    if (zoomDomain === null) {
-      return data;
+  const visibleChartData = useMemo(() => {
+    if (brushRange === null) {
+      return fullChartData;
     }
 
-    const [start, end] = zoomDomain;
-    return data.filter(point => point.timestamp >= start && point.timestamp <= end);
-  }, [dataSnapshot, zoomDomain]);
+    return fullChartData.slice(brushRange.startIndex, brushRange.endIndex + 1);
+  }, [brushRange, fullChartData]);
 
   const temperatureDomain = useMemo(
-    () => getTemperatureDomain(chartData),
-    [chartData]
+    () => getTemperatureDomain(visibleChartData),
+    [visibleChartData]
   );
   const visibleTemperatureProbeIndexes = useMemo(
     () =>
       Array.from({ length: 10 }, (_item, index) => index).filter(index =>
-        chartData.some(point => typeof point[`probeTemp${index}`] === 'number')
+        visibleChartData.some(point => typeof point[`probeTemp${index}`] === 'number')
       ),
-    [chartData]
+    [visibleChartData]
   );
   const visibleHumidityProbeIndexes = useMemo(
     () =>
       Array.from({ length: 10 }, (_item, index) => index).filter(index =>
-        chartData.some(point => typeof point[`probeHum${index}`] === 'number')
+        visibleChartData.some(point => typeof point[`probeHum${index}`] === 'number')
       ),
-    [chartData]
+    [visibleChartData]
   );
-  const showPointDots = chartData.length > 0 && chartData.length <= 20;
+  const showPointDots = visibleChartData.length > 0 && visibleChartData.length <= 20;
 
-  const averageLineColor = useMemo(() => {
-    if (typeof window === 'undefined') {
-      return '#111827';
+  const averageLineColor = '#6b7280';
+  const timeWindowOptions = useMemo(
+    () =>
+      timeWindowValue === 'custom'
+        ? [...BASE_TIME_WINDOW_OPTIONS, { label: 'Tùy chọn', value: 'custom' as const }]
+        : BASE_TIME_WINDOW_OPTIONS,
+    [timeWindowValue]
+  );
+
+  useEffect(() => {
+    if (fullChartData.length === 0) {
+      setBrushRange(null);
+      return;
     }
 
-    return window.matchMedia('(prefers-color-scheme: dark)').matches
-      ? '#ffffff'
-      : '#111827';
-  }, []);
+    if (!followRealtime) {
+      setBrushRange(currentRange => {
+        if (currentRange === null) {
+          return getFullBrushRange(fullChartData.length);
+        }
+
+        const startIndex = clampIndex(currentRange.startIndex, fullChartData.length);
+        const endIndex = clampIndex(currentRange.endIndex, fullChartData.length);
+        const nextRange = {
+          startIndex: Math.min(startIndex, endIndex),
+          endIndex: Math.max(startIndex, endIndex),
+        };
+
+        return areBrushRangesEqual(currentRange, nextRange)
+          ? currentRange
+          : nextRange;
+      });
+      return;
+    }
+
+    const nextRange = getPresetBrushRange(
+      fullChartData,
+      timeWindowValue,
+      fullChartData.length - 1
+    );
+
+    setBrushRange(currentRange =>
+      areBrushRangesEqual(currentRange, nextRange) ? currentRange : nextRange
+    );
+  }, [followRealtime, fullChartData, timeWindowValue]);
 
   const handleClear = useCallback(() => {
     bufferRef.current = [];
     setDataSnapshot([]);
-    setZoomStart(null);
-    setZoomEnd(null);
-    setZoomDomain(null);
+    setBrushRange(null);
+    setTimeWindowValue(DEFAULT_TIME_WINDOW);
+    setFollowRealtime(true);
   }, []);
 
   const handleResetZoom = useCallback(() => {
-    setZoomStart(null);
-    setZoomEnd(null);
-    setZoomDomain(null);
+    setBrushRange(getFullBrushRange(fullChartData.length));
+    setTimeWindowValue(DEFAULT_TIME_WINDOW);
+    setFollowRealtime(true);
+  }, [fullChartData.length]);
+
+  const handleTimeWindowChange = useCallback(
+    (value: TimeWindowValue) => {
+      if (value === 'custom') {
+        return;
+      }
+
+      setTimeWindowValue(value);
+      setBrushRange(
+        value === 'all'
+          ? getFullBrushRange(fullChartData.length)
+          : getPresetBrushRange(fullChartData, value, fullChartData.length - 1)
+      );
+      setFollowRealtime(true);
+    },
+    [fullChartData]
+  );
+
+  const handleFollowRealtimeChange = useCallback((checked: boolean) => {
+    setFollowRealtime(checked);
   }, []);
 
-  const handleMouseDown = useCallback((state: MouseHandlerDataParam) => {
-    const activeTimestamp =
-      typeof state.activeLabel === 'number' ? state.activeLabel : null;
-    const point = chartData.find(item => item.timestamp === activeTimestamp);
+  const handleBrushChange = useCallback(
+    (range: { startIndex?: number; endIndex?: number }) => {
+      if (
+        typeof range.startIndex !== 'number' ||
+        typeof range.endIndex !== 'number' ||
+        fullChartData.length === 0
+      ) {
+        return;
+      }
 
-    if (point !== undefined) {
-      setZoomStart(point.timestamp);
-      setZoomEnd(null);
-    }
-  }, [chartData]);
+      const startIndex = clampIndex(range.startIndex, fullChartData.length);
+      const endIndex = clampIndex(range.endIndex, fullChartData.length);
+      const nextRange = {
+        startIndex: Math.min(startIndex, endIndex),
+        endIndex: Math.max(startIndex, endIndex),
+      };
 
-  const handleMouseMove = useCallback((state: MouseHandlerDataParam) => {
-    if (zoomStart === null) {
-      return;
-    }
+      if (areBrushRangesEqual(brushRange, nextRange)) {
+        return;
+      }
 
-    const activeTimestamp =
-      typeof state.activeLabel === 'number' ? state.activeLabel : null;
-    const point = chartData.find(item => item.timestamp === activeTimestamp);
-
-    if (point !== undefined) {
-      setZoomEnd(point.timestamp);
-    }
-  }, [chartData, zoomStart]);
-
-  const handleMouseUp = useCallback(() => {
-    if (zoomStart === null || zoomEnd === null || zoomStart === zoomEnd) {
-      setZoomStart(null);
-      setZoomEnd(null);
-      return;
-    }
-
-    setZoomDomain([
-      Math.min(zoomStart, zoomEnd),
-      Math.max(zoomStart, zoomEnd),
-    ]);
-    setZoomStart(null);
-    setZoomEnd(null);
-  }, [zoomEnd, zoomStart]);
+      setBrushRange(nextRange);
+      setTimeWindowValue('custom');
+      setFollowRealtime(false);
+    },
+    [brushRange, fullChartData.length]
+  );
 
   const renderLegend = useCallback((props: LegendContentProps) => {
     const payload = props.payload ?? [];
@@ -418,20 +540,31 @@ export default function TemperatureChart({
     );
   }, []);
 
-  const referenceArea =
-    zoomStart !== null && zoomEnd !== null ? (
-      <ReferenceArea
-        x1={Math.min(zoomStart, zoomEnd)}
-        x2={Math.max(zoomStart, zoomEnd)}
-        strokeOpacity={0.3}
-      />
-    ) : null;
+  const isBrushZoomed =
+    brushRange !== null &&
+    fullChartData.length > 0 &&
+    (brushRange.startIndex > 0 ||
+      brushRange.endIndex < fullChartData.length - 1 ||
+      timeWindowValue !== 'all');
 
   return (
     <section className="temperature-chart" aria-label="Biểu đồ nhiệt độ - độ ẩm">
       <div className="temperature-chart-toolbar">
-        <Space>
-          {zoomDomain !== null && (
+        <Space className="temperature-chart-toolbar-controls" wrap>
+          <Segmented<TimeWindowValue>
+            options={timeWindowOptions}
+            onChange={handleTimeWindowChange}
+            size="small"
+            value={timeWindowValue}
+          />
+          <Switch
+            checked={followRealtime}
+            checkedChildren="Theo dõi"
+            onChange={handleFollowRealtimeChange}
+            size="small"
+            unCheckedChildren="Tạm dừng"
+          />
+          {isBrushZoomed && (
             <Button icon={<ZoomOutOutlined />} onClick={handleResetZoom}>
               Reset Zoom
             </Button>
@@ -444,11 +577,8 @@ export default function TemperatureChart({
 
       <ResponsiveContainer width="100%" height={height}>
         <ComposedChart
-          data={chartData}
-          margin={{ top: 16, right: showHumidity ? 28 : 16, bottom: 12, left: 8 }}
-          onMouseDown={handleMouseDown}
-          onMouseMove={handleMouseMove}
-          onMouseUp={handleMouseUp}
+          data={fullChartData}
+          margin={{ top: 16, right: showHumidity ? 28 : 16, bottom: 44, left: 8 }}
         >
           <CartesianGrid strokeDasharray="3 3" />
           <XAxis
@@ -481,24 +611,6 @@ export default function TemperatureChart({
           <Tooltip content={(props: ChartTooltipProps) => <CustomTooltip {...props} />} />
           <Legend content={renderLegend} />
 
-          {showTemperature &&
-            visibleTemperatureProbeIndexes.map(index => {
-              return (
-                <Line
-                  connectNulls
-                  dataKey={`probeTemp${index}`}
-                  dot={showPointDots ? { r: 2.5 } : false}
-                  isAnimationActive={false}
-                  key={`probe-temp-${index}`}
-                  name={`Dau do ${index + 1}`}
-                  stroke={PROBE_COLORS[index]}
-                  strokeWidth={3}
-                  type="monotone"
-                  yAxisId="temperature"
-                />
-              );
-            })}
-
           {showTemperature && (
             <Line
               connectNulls
@@ -513,6 +625,42 @@ export default function TemperatureChart({
             />
           )}
 
+          {showTemperature &&
+            visibleTemperatureProbeIndexes.map(index => {
+              return (
+                <Line
+                  connectNulls
+                  dataKey={`probeTemp${index}`}
+                  dot={showPointDots ? { r: 2.5 } : false}
+                  isAnimationActive={false}
+                  key={`probe-temp-${index}`}
+                  name={`Đầu đo ${index + 1}`}
+                  stroke={PROBE_COLORS[index]}
+                  strokeWidth={3}
+                  type="monotone"
+                  yAxisId="temperature"
+                />
+              );
+            })}
+
+          {showHumidity && (
+            <Line
+              activeDot={false}
+              connectNulls
+              dataKey="avgHumidity"
+              dot={false}
+              isAnimationActive={false}
+              legendType="none"
+              name="Trung bình độ ẩm"
+              stroke={averageLineColor}
+              strokeDasharray="8 5"
+              strokeOpacity={0.9}
+              strokeWidth={2.5}
+              type="monotone"
+              yAxisId="humidity"
+            />
+          )}
+
           {showHumidity && (
             <>
               {visibleHumidityProbeIndexes.map(index => (
@@ -524,7 +672,7 @@ export default function TemperatureChart({
                   isAnimationActive={false}
                   key={`probe-hum-${index}`}
                   legendType="none"
-                  name={`Do am ${index + 1}`}
+                  name={`Độ ẩm ${index + 1}`}
                   stroke={PROBE_COLORS[index]}
                   strokeDasharray="6 5"
                   strokeOpacity={0.9}
@@ -536,25 +684,18 @@ export default function TemperatureChart({
             </>
           )}
 
-          {showHumidity && (
-            <Line
-              activeDot={false}
-              connectNulls
-              dataKey="avgHumidity"
-              dot={false}
-              isAnimationActive={false}
-              legendType="none"
-              name="Trung binh do am"
-              stroke={averageLineColor}
-              strokeDasharray="8 5"
-              strokeOpacity={0.9}
-              strokeWidth={2.5}
-              type="monotone"
-              yAxisId="humidity"
+          {brushRange !== null && (
+            <Brush
+              dataKey="timestamp"
+              endIndex={brushRange.endIndex}
+              height={28}
+              onChange={handleBrushChange}
+              startIndex={brushRange.startIndex}
+              stroke="#1677ff"
+              tickFormatter={value => formatTime(Number(value))}
+              travellerWidth={10}
             />
           )}
-
-          {referenceArea}
         </ComposedChart>
       </ResponsiveContainer>
     </section>

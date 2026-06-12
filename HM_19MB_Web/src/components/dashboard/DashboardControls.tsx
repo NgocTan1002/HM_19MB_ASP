@@ -35,11 +35,11 @@ interface MeasurementStats {
 const { Text } = Typography;
 
 function isValidNumber(value: number | undefined | null): value is number {
-  return typeof value === 'number' && !Number.isNaN(value);
+  return typeof value === 'number' && Number.isFinite(value);
 }
 
 function isConnectedProbeValue(value: number | undefined | null): value is number {
-  return isValidNumber(value) && value !== 0;
+  return isValidNumber(value);
 }
 
 function hasTemperatureData(block: MeasurementBlock | null): boolean {
