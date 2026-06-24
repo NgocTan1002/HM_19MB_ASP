@@ -135,6 +135,28 @@ async function deleteSession(sessionId: number): Promise<void> {
   assertStatus(response, 204, `DELETE /api/sessions/${sessionId}`);
 }
 
+async function startSession(sessionId: number): Promise<void> {
+  const response = await request(
+    `/api/sessions/${sessionId}/measurements/start`,
+    {
+      method: 'POST',
+    }
+  );
+
+  assertStatus(
+    response,
+    200,
+    `POST /api/sessions/${sessionId}/measurements/start`
+  );
+
+  const data: unknown = await response.json();
+  assertObject(data, 'Start measurement session');
+
+  if (data.active !== true) {
+    throw new Error('Expected measurement session to be active');
+  }
+}
+
 async function testSignalR(sessionId: number): Promise<void> {
   const connection = new signalR.HubConnectionBuilder()
     .withUrl(`${API_BASE}/hubs/measurement`)
@@ -155,12 +177,20 @@ async function testSignalR(sessionId: number): Promise<void> {
   try {
     await connection.start();
     await connection.invoke('JoinSession', String(sessionId));
+    await startSession(sessionId);
 
     const response = await request(`/api/sessions/${sessionId}/measurements`, {
       method: 'POST',
       body: JSON.stringify(createMeasurementPayload()),
     });
     assertStatus(response, 200, `POST /api/sessions/${sessionId}/measurements`);
+
+    const result: unknown = await response.json();
+    assertObject(result, 'POST measurement');
+
+    if (result.ignored === true) {
+      throw new Error(`Measurement was ignored: ${String(result.reason)}`);
+    }
 
     const block = await received;
     if (block.deviceId !== 'SMOKE') {

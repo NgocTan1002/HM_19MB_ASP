@@ -2,6 +2,7 @@ using HM_19MB_API.Services;
 using HM_19MB_Core;
 using HM_19MB_Core.Data;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace HM_19MB_API.Controllers
 {
@@ -11,13 +12,16 @@ namespace HM_19MB_API.Controllers
     {
         private readonly MeasurementIngestionService _ingestion;
         private readonly MeasurementRunState _runState;
+        private readonly IMemoryCache _cache;
 
         public MeasurementsController(
             MeasurementIngestionService ingestion,
-            MeasurementRunState runState)
+            MeasurementRunState runState,
+            IMemoryCache cache)
         {
             _ingestion = ingestion;
             _runState = runState;
+            _cache = cache;
         }
 
         [HttpPost("start")]
@@ -63,7 +67,17 @@ namespace HM_19MB_API.Controllers
         [HttpGet]
         public async Task<IActionResult> Get(int sessionId)
         {
-            var data = await DatabaseService.LayKetQuaTheoPhienAsync(sessionId);
+            var data = await _cache.GetOrCreateAsync(
+                CacheKeys.Measurements(sessionId),
+                async entry =>
+                {
+                    entry.AbsoluteExpirationRelativeToNow =
+                        TimeSpan.FromSeconds(10);
+
+                    return await DatabaseService
+                        .LayKetQuaTheoPhienAsync(sessionId);
+                });
+
             return Ok(data);
         }
     }

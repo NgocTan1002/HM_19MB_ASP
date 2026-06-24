@@ -381,13 +381,42 @@ export default function TemperatureChart({
     [dataSnapshot]
   );
 
+  const effectiveBrushRange = useMemo(() => {
+    if (fullChartData.length === 0) {
+      return null;
+    }
+
+    if (!followRealtime) {
+      if (brushRange === null) {
+        return getFullBrushRange(fullChartData.length);
+      }
+
+      const startIndex = clampIndex(brushRange.startIndex, fullChartData.length);
+      const endIndex = clampIndex(brushRange.endIndex, fullChartData.length);
+
+      return {
+        startIndex: Math.min(startIndex, endIndex),
+        endIndex: Math.max(startIndex, endIndex),
+      };
+    }
+
+    return getPresetBrushRange(
+      fullChartData,
+      timeWindowValue,
+      fullChartData.length - 1
+    );
+  }, [brushRange, followRealtime, fullChartData, timeWindowValue]);
+
   const visibleChartData = useMemo(() => {
-    if (brushRange === null) {
+    if (effectiveBrushRange === null) {
       return fullChartData;
     }
 
-    return fullChartData.slice(brushRange.startIndex, brushRange.endIndex + 1);
-  }, [brushRange, fullChartData]);
+    return fullChartData.slice(
+      effectiveBrushRange.startIndex,
+      effectiveBrushRange.endIndex + 1
+    );
+  }, [effectiveBrushRange, fullChartData]);
 
   const temperatureDomain = useMemo(
     () => getTemperatureDomain(visibleChartData),
@@ -417,43 +446,6 @@ export default function TemperatureChart({
         : BASE_TIME_WINDOW_OPTIONS,
     [timeWindowValue]
   );
-
-  useEffect(() => {
-    if (fullChartData.length === 0) {
-      setBrushRange(null);
-      return;
-    }
-
-    if (!followRealtime) {
-      setBrushRange(currentRange => {
-        if (currentRange === null) {
-          return getFullBrushRange(fullChartData.length);
-        }
-
-        const startIndex = clampIndex(currentRange.startIndex, fullChartData.length);
-        const endIndex = clampIndex(currentRange.endIndex, fullChartData.length);
-        const nextRange = {
-          startIndex: Math.min(startIndex, endIndex),
-          endIndex: Math.max(startIndex, endIndex),
-        };
-
-        return areBrushRangesEqual(currentRange, nextRange)
-          ? currentRange
-          : nextRange;
-      });
-      return;
-    }
-
-    const nextRange = getPresetBrushRange(
-      fullChartData,
-      timeWindowValue,
-      fullChartData.length - 1
-    );
-
-    setBrushRange(currentRange =>
-      areBrushRangesEqual(currentRange, nextRange) ? currentRange : nextRange
-    );
-  }, [followRealtime, fullChartData, timeWindowValue]);
 
   const handleClear = useCallback(() => {
     bufferRef.current = [];
@@ -507,7 +499,7 @@ export default function TemperatureChart({
         endIndex: Math.max(startIndex, endIndex),
       };
 
-      if (areBrushRangesEqual(brushRange, nextRange)) {
+      if (areBrushRangesEqual(effectiveBrushRange, nextRange)) {
         return;
       }
 
@@ -515,7 +507,7 @@ export default function TemperatureChart({
       setTimeWindowValue('custom');
       setFollowRealtime(false);
     },
-    [brushRange, fullChartData.length]
+    [effectiveBrushRange, fullChartData.length]
   );
 
   const renderLegend = useCallback((props: LegendContentProps) => {
@@ -541,10 +533,10 @@ export default function TemperatureChart({
   }, []);
 
   const isBrushZoomed =
-    brushRange !== null &&
+    effectiveBrushRange !== null &&
     fullChartData.length > 0 &&
-    (brushRange.startIndex > 0 ||
-      brushRange.endIndex < fullChartData.length - 1 ||
+    (effectiveBrushRange.startIndex > 0 ||
+      effectiveBrushRange.endIndex < fullChartData.length - 1 ||
       timeWindowValue !== 'all');
 
   return (
@@ -684,13 +676,13 @@ export default function TemperatureChart({
             </>
           )}
 
-          {brushRange !== null && (
+          {effectiveBrushRange !== null && (
             <Brush
               dataKey="timestamp"
-              endIndex={brushRange.endIndex}
+              endIndex={effectiveBrushRange.endIndex}
               height={28}
               onChange={handleBrushChange}
-              startIndex={brushRange.startIndex}
+              startIndex={effectiveBrushRange.startIndex}
               stroke="#1677ff"
               tickFormatter={value => formatTime(Number(value))}
               travellerWidth={10}

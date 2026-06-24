@@ -1,7 +1,9 @@
 ﻿using HM_19MB_Core.Data;
+using HM_19MB_API.Services;
 using HM_19MB_Core.Models;
 using HM_19MB_Core.Services;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace HM_19MB_API.Controllers
 {
@@ -9,6 +11,13 @@ namespace HM_19MB_API.Controllers
     [Route("api/sessions/{sessionId}/calibration")]
     public class CalibrationController : Controller
     {
+        private readonly IMemoryCache _cache;
+
+        public CalibrationController(IMemoryCache cache)
+        {
+            _cache = cache;
+        }
+
         [HttpPost("calculate")]
         public IActionResult Calculate([FromBody] UncertaintyInput input)
         {
@@ -27,13 +36,31 @@ namespace HM_19MB_API.Controllers
             var id = await DatabaseService.LuuKetQuaHieuChuanAsync(sessionId, row);
             if (id > 0 && row.ChiTietLanDos?.Count > 0)
                 await DatabaseService.LuuChiTietLanDoAsync(id, row.ChiTietLanDos);
+
+            _cache.Remove(CacheKeys.CalibrationResults(sessionId));
+            _cache.Remove(CacheKeys.Sessions);
+            if (id > 0)
+            {
+                _cache.Remove(CacheKeys.CalibrationDetails(id));
+            }
+
             return Ok(new { id });
         }
 
         [HttpGet("results")]
         public async Task<IActionResult> GetResults(int sessionId)
         {
-            var rows = await DatabaseService.LayKetQuaHieuChuanAsync(sessionId);
+            var rows = await _cache.GetOrCreateAsync(
+                CacheKeys.CalibrationResults(sessionId),
+                async entry =>
+                {
+                    entry.AbsoluteExpirationRelativeToNow =
+                        TimeSpan.FromMinutes(1);
+
+                    return await DatabaseService
+                        .LayKetQuaHieuChuanAsync(sessionId);
+                }) ?? [];
+
             var response = rows.Select(row => new
             {
                 id = row.Id,
@@ -63,7 +90,20 @@ namespace HM_19MB_API.Controllers
         [HttpDelete("results/{stt}")]
         public async Task<IActionResult> DeleteResult(int sessionId, int stt)
         {
+            var rows = await DatabaseService.LayKetQuaHieuChuanAsync(sessionId);
+            var resultId = rows
+                .FirstOrDefault(row => row.STT == stt)
+                ?.Id;
+
             await DatabaseService.XoaKetQuaHieuChuanAsync(sessionId, stt);
+
+            _cache.Remove(CacheKeys.CalibrationResults(sessionId));
+            _cache.Remove(CacheKeys.Sessions);
+            if (resultId is > 0)
+            {
+                _cache.Remove(CacheKeys.CalibrationDetails(resultId.Value));
+            }
+
             return NoContent();
         }
 
@@ -71,7 +111,16 @@ namespace HM_19MB_API.Controllers
         public async Task<IActionResult> GetDetails(int sessionId, int id)
         {
             _ = sessionId;
-            var details = await DatabaseService.LayChiTietLanDoAsync(id);
+            var details = await _cache.GetOrCreateAsync(
+                CacheKeys.CalibrationDetails(id),
+                async entry =>
+                {
+                    entry.AbsoluteExpirationRelativeToNow =
+                        TimeSpan.FromMinutes(2);
+
+                    return await DatabaseService.LayChiTietLanDoAsync(id);
+                }) ?? [];
+
             var response = details.Select(detail => new
             {
                 lanDo = detail.LanDo,

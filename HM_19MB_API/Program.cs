@@ -17,8 +17,11 @@ builder.Services.AddSignalR()
         options.PayloadSerializerOptions.NumberHandling =
             JsonNumberHandling.AllowNamedFloatingPointLiterals;
     });
+
+builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<MeasurementRunState>();
 builder.Services.AddSingleton<MeasurementIngestionService>();
+
 builder.Services.Configure<MqttOptions>(
     builder.Configuration.GetSection("Mqtt"));
 builder.Services.AddHostedService<MqttBackgroundService>();

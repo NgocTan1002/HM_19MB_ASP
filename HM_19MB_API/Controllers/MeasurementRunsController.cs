@@ -2,6 +2,7 @@ using HM_19MB_API.Services;
 using HM_19MB_Core;
 using HM_19MB_Core.Data;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace HM_19MB_API.Controllers
 {
@@ -11,13 +12,16 @@ namespace HM_19MB_API.Controllers
     {
         private readonly MeasurementRunState _runState;
         private readonly MeasurementIngestionService _ingestion;
+        private readonly IMemoryCache _cache;
 
         public MeasurementRunsController(
             MeasurementRunState runState,
-            MeasurementIngestionService ingestion)
+            MeasurementIngestionService ingestion,
+            IMemoryCache cache)
         {
             _runState = runState;
             _ingestion = ingestion;
+            _cache = cache;
         }
 
         [HttpPost("start")]
@@ -27,6 +31,8 @@ namespace HM_19MB_API.Controllers
 
             await DatabaseService.EnsureSchemaAsync();
             var sessionId = await DatabaseService.TaoPhienMoiAsync(request.Metadata);
+            _cache.Remove(CacheKeys.Sessions);
+
             if (string.IsNullOrWhiteSpace(deviceId))
             {
                 _runState.StartAutoSession(sessionId);

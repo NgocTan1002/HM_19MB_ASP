@@ -2,6 +2,7 @@
 using HM_19MB_Core;
 using HM_19MB_Core.Data;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace HM_19MB_API.Services;
 
@@ -9,13 +10,16 @@ public sealed class MeasurementIngestionService
 {
     private readonly IHubContext<MeasurementHub> _hub;
     private readonly MeasurementRunState _runState;
+    private readonly IMemoryCache _cache;
 
     public MeasurementIngestionService(
         IHubContext<MeasurementHub> hub,
-        MeasurementRunState runState)
+        MeasurementRunState runState,
+        IMemoryCache cache)
     {
         _hub = hub;
         _runState = runState;
+        _cache = cache;
     }
 
     public async Task<MeasurementIngestionResult> IngestAsync(
@@ -36,6 +40,9 @@ public sealed class MeasurementIngestionService
             sessionId,
             block,
             includeHumidity: block.HasHumidity);
+
+        _cache.Remove(CacheKeys.Measurements(sessionId));
+        _cache.Remove(CacheKeys.Sessions);
 
         await _hub.Clients
             .Group($"Session_{sessionId}")
