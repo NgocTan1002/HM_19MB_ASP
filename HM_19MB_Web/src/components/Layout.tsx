@@ -2,6 +2,7 @@ import {
   BarChartOutlined,
   CalculatorOutlined,
   DatabaseOutlined,
+  SettingOutlined,
 } from '@ant-design/icons';
 import { FloatButton, Grid, Layout as AntLayout, Menu, Typography } from 'antd';
 import type { MenuProps } from 'antd';
@@ -31,6 +32,10 @@ function getSelectedKey(pathname: string): string {
 
   if (pathname.includes('/calibration')) {
     return 'calibration';
+  }
+
+  if (pathname === '/settings/mqtt') {
+    return 'mqtt-settings';
   }
 
   return 'dashboard';
@@ -67,6 +72,11 @@ export default function AppLayout() {
         icon: <CalculatorOutlined />,
         label: 'Tính hiệu chuẩn',
       },
+      {
+        key: 'mqtt-settings',
+        icon: <SettingOutlined />,
+        label: 'MQTT',
+      },
     ],
     []
   );
@@ -88,6 +98,11 @@ export default function AppLayout() {
       } else {
         navigate('/sessions');
       }
+      return;
+    }
+
+    if (key === 'mqtt-settings') {
+      navigate('/settings/mqtt');
     }
   };
 

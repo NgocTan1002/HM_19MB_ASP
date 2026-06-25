@@ -1,50 +1,174 @@
-﻿using System.Text;
+using System.Text;
 using HM_19MB_Core;
-using Microsoft.Extensions.Options;
 using MQTTnet;
 
 namespace HM_19MB_API.Services
 {
     public sealed class MqttBackgroundService : BackgroundService
     {
+        private static readonly TimeSpan ConnectTimeout = TimeSpan.FromSeconds(10);
+        private static readonly TimeSpan HealthCheckInterval = TimeSpan.FromSeconds(5);
+        private static readonly TimeSpan[] RetryDelays =
+        [
+            TimeSpan.FromSeconds(2),
+            TimeSpan.FromSeconds(5),
+            TimeSpan.FromSeconds(10),
+            TimeSpan.FromSeconds(30)
+        ];
+
         private readonly ILogger<MqttBackgroundService> _logger;
         private readonly MeasurementIngestionService _ingestion;
-        private readonly MqttOptions _options;
-        private readonly IMqttClient _client;
+        private readonly SystemSettingsService _settingsService;
+        private readonly MqttReconnectSignal _reconnectSignal;
 
         public MqttBackgroundService(
             ILogger<MqttBackgroundService> logger,
             MeasurementIngestionService ingestion,
-            IOptions<MqttOptions> options)
+            SystemSettingsService settingsService,
+            MqttReconnectSignal reconnectSignal)
         {
             _logger = logger;
             _ingestion = ingestion;
-            _options = options.Value;
-            var factory = new MqttClientFactory();
-            _client = factory.CreateMqttClient();
+            _settingsService = settingsService;
+            _reconnectSignal = reconnectSignal;
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            if (!_options.Enabled)
+            var retryIndex = 0;
+
+            while (!stoppingToken.IsCancellationRequested)
             {
-                _logger.LogInformation("MQTT is disabled in config, skipping.");
-                return;
+                IMqttClient? client = null;
+                CancellationTokenSource? reconnectWaitCts = null;
+
+                try
+                {
+                    var settings = await _settingsService.GetMqttSettingsAsync(stoppingToken);
+
+                    if (!settings.Enabled)
+                    {
+                        _logger.LogInformation("MQTT is disabled in settings.");
+                        retryIndex = 0;
+                        await WaitForReconnectAsync(stoppingToken);
+                        continue;
+                    }
+
+                    var factory = new MqttClientFactory();
+                    client = factory.CreateMqttClient();
+                    client.ApplicationMessageReceivedAsync += HandleMessageAsync;
+
+                    var mqttOptions = BuildClientOptions(settings);
+                    reconnectWaitCts =
+                        CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+                    var reconnectTask =
+                        _reconnectSignal.WaitAsync(reconnectWaitCts.Token).AsTask();
+
+                    _logger.LogInformation(
+                        "MQTT connecting to {Host}:{Port}",
+                        settings.Host,
+                        settings.Port);
+
+                    using var connectTimeoutCts =
+                        CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+                    connectTimeoutCts.CancelAfter(ConnectTimeout);
+
+                    var connectTask = client.ConnectAsync(
+                        mqttOptions,
+                        connectTimeoutCts.Token);
+
+                    var connectCompleted = await Task.WhenAny(connectTask, reconnectTask);
+
+                    if (connectCompleted == reconnectTask)
+                    {
+                        _logger.LogInformation("MQTT reconnect requested while connecting.");
+                        connectTimeoutCts.Cancel();
+                        await SafeDisconnectAsync(client);
+                        continue;
+                    }
+
+                    await connectTask;
+
+                    _logger.LogInformation(
+                        "MQTT connected. Subscribing to topic {Topic}...",
+                        settings.Topic);
+
+                    var subscribeOptions = new MqttClientSubscribeOptionsBuilder()
+                        .WithTopicFilter(settings.Topic)
+                        .Build();
+
+                    await client.SubscribeAsync(subscribeOptions, stoppingToken);
+
+                    _logger.LogInformation(
+                        "MQTT subscribed to topic {Topic}",
+                        settings.Topic);
+
+                    retryIndex = 0;
+                    var shouldReconnect =
+                        await WaitUntilReconnectOrDisconnectAsync(
+                            client,
+                            reconnectTask,
+                            stoppingToken);
+
+                    if (shouldReconnect)
+                    {
+                        _logger.LogInformation("MQTT reconnect requested.");
+                    }
+                    else
+                    {
+                        _logger.LogWarning("MQTT disconnected. Reconnecting...");
+                    }
+                }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                {
+                    break;
+                }
+                catch (OperationCanceledException)
+                {
+                    _logger.LogWarning(
+                        "MQTT connection timed out after {Seconds} seconds.",
+                        ConnectTimeout.TotalSeconds);
+
+                    await WaitForRetryAsync(retryIndex, stoppingToken);
+                    retryIndex = Math.Min(retryIndex + 1, RetryDelays.Length - 1);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "MQTT connection error.");
+
+                    await WaitForRetryAsync(retryIndex, stoppingToken);
+                    retryIndex = Math.Min(retryIndex + 1, RetryDelays.Length - 1);
+                }
+                finally
+                {
+                    reconnectWaitCts?.Cancel();
+                    reconnectWaitCts?.Dispose();
+
+                    if (client != null)
+                    {
+                        await SafeDisconnectAsync(client);
+                        client.Dispose();
+                    }
+                }
             }
+        }
 
-            _client.ApplicationMessageReceivedAsync += HandleMessageAsync;
-
+        private static MqttClientOptions BuildClientOptions(
+            MqttRuntimeSettings settings)
+        {
             var builder = new MqttClientOptionsBuilder()
-                .WithClientId(_options.ClientId)
-                .WithTcpServer(_options.Host, _options.Port)
+                .WithClientId(settings.ClientId)
+                .WithTcpServer(settings.Host, settings.Port)
                 .WithCleanSession();
 
-            if (!string.IsNullOrWhiteSpace(_options.Username))
+            if (!string.IsNullOrWhiteSpace(settings.Username))
             {
-                builder = builder.WithCredentials(_options.Username, _options.Password);
+                builder = builder.WithCredentials(
+                    settings.Username,
+                    settings.Password);
             }
 
-            if (_options.UseTls)
+            if (settings.UseTls)
             {
                 builder = builder.WithTlsOptions(options =>
                 {
@@ -52,75 +176,82 @@ namespace HM_19MB_API.Services
                 });
             }
 
-            var mqttOptions  = builder.Build();
+            return builder.Build();
+        }
 
+        private async Task<bool> WaitUntilReconnectOrDisconnectAsync(
+            IMqttClient client,
+            Task reconnectTask,
+            CancellationToken stoppingToken)
+        {
+            while (!stoppingToken.IsCancellationRequested && client.IsConnected)
+            {
+                var delayTask = Task.Delay(HealthCheckInterval, stoppingToken);
+                var completed = await Task.WhenAny(delayTask, reconnectTask);
+
+                if (completed == reconnectTask)
+                {
+                    await reconnectTask;
+                    return true;
+                }
+
+                await delayTask;
+            }
+
+            return false;
+        }
+
+        private async Task WaitForReconnectAsync(CancellationToken stoppingToken)
+        {
             try
             {
-                while (!stoppingToken.IsCancellationRequested)
+                await _reconnectSignal.WaitAsync(stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+            }
+        }
+
+        private async Task WaitForRetryAsync(
+            int retryIndex,
+            CancellationToken stoppingToken)
+        {
+            var delay = RetryDelays[Math.Clamp(retryIndex, 0, RetryDelays.Length - 1)];
+            _logger.LogInformation(
+                "MQTT retrying in {Seconds} seconds...",
+                delay.TotalSeconds);
+
+            var delayTask = Task.Delay(delay, stoppingToken);
+            using var reconnectWaitCts =
+                CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+            var reconnectTask =
+                _reconnectSignal.WaitAsync(reconnectWaitCts.Token).AsTask();
+            var completed = await Task.WhenAny(delayTask, reconnectTask);
+
+            if (completed == reconnectTask)
+            {
+                await reconnectTask;
+                _logger.LogInformation("MQTT retry delay interrupted by reconnect request.");
+            }
+            else
+            {
+                reconnectWaitCts.Cancel();
+                await delayTask;
+            }
+        }
+
+        private static async Task SafeDisconnectAsync(IMqttClient client)
+        {
+            try
+            {
+                if (client.IsConnected)
                 {
-                    try
-                    {
-                        if (!_client.IsConnected)
-                        {
-                            _logger.LogInformation(
-                                "MQTT connecting to {Host}:{Port}",
-                                _options.Host,
-                                _options.Port);
-
-                            await _client.ConnectAsync(mqttOptions, stoppingToken);
-
-                            _logger.LogInformation(
-                                "MQTT connected. Subscribing to topic {Topic}...",
-                                _options.Topic);
-
-                            var subscribeOptions = new MqttClientSubscribeOptionsBuilder()
-                                .WithTopicFilter(_options.Topic)
-                                .Build();
-
-                            await _client.SubscribeAsync(
-                                subscribeOptions,
-                                stoppingToken);
-
-                            _logger.LogInformation(
-                                "MQTT subscribed to topic {Topic}",
-                                _options.Topic);
-                        }
-                        await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        break;
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, "MQTT connection error. Retrying in 10 seconds...");
-
-                        try
-                        {
-                            await Task.Delay(
-                                TimeSpan.FromSeconds(10),
-                                stoppingToken);
-                        }
-                        catch (OperationCanceledException)
-                        {
-                            break;
-                        }
-                    }
+                    await client.DisconnectAsync(
+                        cancellationToken: CancellationToken.None);
                 }
             }
-            finally
+            catch
             {
-                if (_client.IsConnected)
-                {
-                    _logger.LogInformation("MQTT disconnecting...");
-
-                    await _client.DisconnectAsync(
-                        cancellationToken: CancellationToken.None);
-
-                    _logger.LogInformation("MQTT disconnected.");
-                }
-
-                _client.Dispose();
             }
         }
 
@@ -132,9 +263,9 @@ namespace HM_19MB_API.Services
                 var payload = args.ApplicationMessage.ConvertPayloadToString();
 
                 _logger.LogDebug(
-                            "MQTT message received. Topic={Topic}, PayloadLength={Length}",
-                            topic,
-                            payload.Length);
+                    "MQTT message received. Topic={Topic}, PayloadLength={Length}",
+                    topic,
+                    payload.Length);
 
                 var frame = ExtractMeasurementFrame(payload);
                 if (frame == null)

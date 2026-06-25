@@ -4,6 +4,7 @@ import { DashboardRunProvider } from './contexts/DashboardRunContext';
 import { SessionProvider } from './contexts/SessionContext';
 import Calibration from './pages/Calibration';
 import Dashboard from './pages/Dashboard';
+import MqttSettings from './pages/MqttSettings';
 import Sessions from './pages/Sessions';
 
 const router = createBrowserRouter([
@@ -28,6 +29,10 @@ const router = createBrowserRouter([
       {
         path: 'sessions/:id/calibration',
         element: <Calibration />,
+      },
+      {
+        path: 'settings/mqtt',
+        element: <MqttSettings />,
       },
     ],
   },

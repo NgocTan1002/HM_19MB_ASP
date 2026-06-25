@@ -1,0 +1,52 @@
+.mqtt-settings-page {
+  display: grid;
+  gap: 16px;
+}
+
+.mqtt-settings-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.mqtt-settings-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 16px;
+}
+
+.mqtt-settings-card .ant-card-body {
+  padding: 16px;
+}
+
+.mqtt-settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+@media (max-width: 960px) {
+  .mqtt-settings-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 767px) {
+  .mqtt-settings-header {
+    display: grid;
+  }
+
+  .mqtt-settings-card .ant-card-body {
+    padding: 12px;
+  }
+
+  .mqtt-settings-actions {
+    justify-content: stretch;
+  }
+
+  .mqtt-settings-actions .ant-btn {
+    flex: 1 1 auto;
+  }
+}

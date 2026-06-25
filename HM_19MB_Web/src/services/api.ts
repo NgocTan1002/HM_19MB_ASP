@@ -10,6 +10,33 @@ import type{
     UncertaintyResult,
 } from '../types/models';
 
+export interface MqttSettingsResponse {
+    enabled: boolean;
+    host: string;
+    port: number;
+    clientId: string;
+    topic: string;
+    username: string;
+    hasPassword: boolean;
+    useTls: boolean;
+}
+
+export interface MqttSettingsUpdateRequest {
+    enabled: boolean;
+    host: string;
+    port: number;
+    clientId: string;
+    topic: string;
+    username: string;
+    password: string | null;
+    useTls: boolean;
+}
+
+export interface MqttTestConnectionResponse {
+    success: boolean;
+    message: string;
+}
+
 const BASE = import.meta.env.VITE_API_URL || 'http://localhost:5135';
 
 const client = axios.create({
@@ -182,7 +209,21 @@ export const reportApi = {
     exportWord: (sessionId: number) =>
         client.get(`/api/sessions/${sessionId}/reports/word`, {
             responseType: 'blob',
-        }),
+    }),
+};
+
+export const mqttSettingsApi = {
+    get: () =>
+        client.get<MqttSettingsResponse>('/api/settings/mqtt'),
+
+    update: (settings: MqttSettingsUpdateRequest) =>
+        client.put<MqttSettingsResponse>('/api/settings/mqtt', settings),
+
+    testConnection: (settings?: MqttSettingsUpdateRequest) =>
+        client.post<MqttTestConnectionResponse>(
+            '/api/settings/mqtt/test-connection',
+            settings
+        ),
 };
 
 export function downloadBlob(blob: Blob, filename: string) {

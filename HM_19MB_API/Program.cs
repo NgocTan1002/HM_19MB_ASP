@@ -21,6 +21,8 @@ builder.Services.AddSignalR()
 builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<MeasurementRunState>();
 builder.Services.AddSingleton<MeasurementIngestionService>();
+builder.Services.AddSingleton<SystemSettingsService>();
+builder.Services.AddSingleton<MqttReconnectSignal>();
 
 builder.Services.Configure<MqttOptions>(
     builder.Configuration.GetSection("Mqtt"));
