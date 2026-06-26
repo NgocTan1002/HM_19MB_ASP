@@ -1,6 +1,8 @@
 using HM_19MB_API.Services;
 using Microsoft.AspNetCore.Mvc;
 using MQTTnet;
+using System.Net;
+using System.Net.Sockets;
 
 namespace HM_19MB_API.Controllers
 {
@@ -137,9 +139,12 @@ namespace HM_19MB_API.Controllers
 
             try
             {
+                var connectHost =
+                    await ResolveConnectHostAsync(settings, timeoutCts.Token);
+
                 var builder = new MqttClientOptionsBuilder()
                     .WithClientId($"{settings.ClientId}_test_{Guid.NewGuid():N}")
-                    .WithTcpServer(settings.Host, settings.Port)
+                    .WithTcpServer(connectHost, settings.Port)
                     .WithCleanSession();
 
                 if (!string.IsNullOrWhiteSpace(settings.Username))
@@ -181,6 +186,24 @@ namespace HM_19MB_API.Controllers
                         cancellationToken: CancellationToken.None);
                 }
             }
+        }
+
+        private static async Task<string> ResolveConnectHostAsync(
+            MqttRuntimeSettings settings,
+            CancellationToken cancellationToken)
+        {
+            if (settings.UseTls ||
+                IPAddress.TryParse(settings.Host, out _))
+            {
+                return settings.Host;
+            }
+
+            var addresses =
+                await Dns.GetHostAddressesAsync(settings.Host, cancellationToken);
+            var ipv4 = addresses.FirstOrDefault(
+                address => address.AddressFamily == AddressFamily.InterNetwork);
+
+            return ipv4?.ToString() ?? settings.Host;
         }
     }
 }

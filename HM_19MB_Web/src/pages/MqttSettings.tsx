@@ -93,16 +93,16 @@ export default function MqttSettings() {
 
   const passwordStatus = useMemo(() => {
     if (clearPassword) {
-      return 'Password will be cleared on save.';
+      return 'Mật khẩu sẽ được xóa khi lưu.';
     }
 
     if (changePassword) {
-      return 'Password will be replaced on save.';
+      return 'Mật khẩu sẽ được thay thế khi lưu.';
     }
 
     return settings?.hasPassword
-      ? 'Current password will be kept.'
-      : 'No password is currently saved.';
+      ? 'Mật khẩu hiện tại sẽ được giữ nguyên.'
+      : 'Chưa lưu mật khẩu.';
   }, [changePassword, clearPassword, settings?.hasPassword]);
 
   const loadSettings = useCallback(async () => {
@@ -115,13 +115,14 @@ export default function MqttSettings() {
       setClearPassword(false);
     } catch (error) {
       console.error('[MQTT Settings] Load failed:', error);
-      message.error(getErrorMessage(error, 'Cannot load MQTT settings'));
+      message.error(getErrorMessage(error, 'Không tải được cấu hình MQTT'));
     } finally {
       setLoading(false);
     }
   }, [form]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadSettings();
   }, [loadSettings]);
 
@@ -146,7 +147,7 @@ export default function MqttSettings() {
       }
     } catch (error) {
       console.error('[MQTT Settings] Test failed:', error);
-      message.error(getErrorMessage(error, 'Cannot test MQTT connection'));
+      message.error(getErrorMessage(error, 'Không kiểm tra được kết nối MQTT'));
     } finally {
       setTesting(false);
     }
@@ -163,10 +164,10 @@ export default function MqttSettings() {
       form.setFieldsValue(toFormValues(response.data));
       setChangePassword(false);
       setClearPassword(false);
-      message.success('MQTT settings saved');
+      message.success('Đã lưu cấu hình MQTT');
     } catch (error) {
       console.error('[MQTT Settings] Save failed:', error);
-      message.error(getErrorMessage(error, 'Cannot save MQTT settings'));
+      message.error(getErrorMessage(error, 'Không lưu được cấu hình MQTT'));
     } finally {
       setSaving(false);
     }
@@ -177,10 +178,10 @@ export default function MqttSettings() {
       <div className="mqtt-settings-header">
         <Space direction="vertical" size={2}>
           <Title level={2} style={{ margin: 0 }}>
-            MQTT Settings
+            Cấu hình MQTT
           </Title>
           <Text type="secondary">
-            Broker and topic used by the background ingestion service.
+            Broker và topic được dùng bởi dịch vụ thu thập dữ liệu nền.
           </Text>
         </Space>
 
@@ -190,7 +191,7 @@ export default function MqttSettings() {
             loading={testing}
             onClick={handleTest}
           >
-            Test
+            Kiểm tra
           </Button>
           <Button
             type="primary"
@@ -198,7 +199,7 @@ export default function MqttSettings() {
             loading={saving}
             onClick={handleSave}
           >
-            Save
+            Lưu
           </Button>
         </div>
       </div>
@@ -227,14 +228,14 @@ export default function MqttSettings() {
               useTls: false,
             }}
           >
-            <Form.Item name="enabled" label="Enabled" valuePropName="checked">
+            <Form.Item name="enabled" label="Bật MQTT" valuePropName="checked">
               <Switch />
             </Form.Item>
 
             <Form.Item
               name="host"
               label="Host"
-              rules={[{ required: true, message: 'Host is required' }]}
+              rules={[{ required: true, message: 'Vui lòng nhập host' }]}
             >
               <Input placeholder="broker.hivemq.com" />
             </Form.Item>
@@ -242,7 +243,7 @@ export default function MqttSettings() {
             <Form.Item
               name="port"
               label="Port"
-              rules={[{ required: true, message: 'Port is required' }]}
+              rules={[{ required: true, message: 'Vui lòng nhập port' }]}
             >
               <InputNumber min={1} max={65535} style={{ width: '100%' }} />
             </Form.Item>
@@ -250,7 +251,7 @@ export default function MqttSettings() {
             <Form.Item
               name="clientId"
               label="Client ID"
-              rules={[{ required: true, message: 'Client ID is required' }]}
+              rules={[{ required: true, message: 'Vui lòng nhập Client ID' }]}
             >
               <Input placeholder="HM_19MB_API" />
             </Form.Item>
@@ -258,12 +259,12 @@ export default function MqttSettings() {
             <Form.Item
               name="topic"
               label="Topic"
-              rules={[{ required: true, message: 'Topic is required' }]}
+              rules={[{ required: true, message: 'Vui lòng nhập topic' }]}
             >
               <Input placeholder="esp32/responses" />
             </Form.Item>
 
-            <Form.Item name="username" label="Username">
+            <Form.Item name="username" label="Tên đăng nhập">
               <Input autoComplete="username" />
             </Form.Item>
 
@@ -279,7 +280,7 @@ export default function MqttSettings() {
                     }
                   }}
                 >
-                  Change password
+                  Đổi mật khẩu
                 </Checkbox>
                 <Checkbox
                   checked={clearPassword}
@@ -292,11 +293,11 @@ export default function MqttSettings() {
                     }
                   }}
                 >
-                  Clear password
+                  Xóa mật khẩu
                 </Checkbox>
               </Space>
 
-              <Form.Item name="password" label="Password">
+              <Form.Item name="password" label="Mật khẩu">
                 <Input.Password
                   autoComplete="new-password"
                   disabled={!changePassword || clearPassword}
@@ -306,7 +307,7 @@ export default function MqttSettings() {
               <Text type="secondary">{passwordStatus}</Text>
             </Space>
 
-            <Form.Item name="useTls" label="Use TLS" valuePropName="checked">
+            <Form.Item name="useTls" label="Dùng TLS" valuePropName="checked">
               <Switch />
             </Form.Item>
           </Form>
@@ -314,18 +315,18 @@ export default function MqttSettings() {
 
         <Card
           className="mqtt-settings-card"
-          title="Runtime"
+          title="Trạng thái chạy"
           loading={loading}
         >
           <Descriptions column={1} size="small">
-            <Descriptions.Item label="Status">
+            <Descriptions.Item label="Trạng thái">
               <Space>
                 {settings?.enabled ? (
                   <CheckCircleOutlined style={{ color: '#16a34a' }} />
                 ) : (
                   <ApiOutlined style={{ color: '#6b7280' }} />
                 )}
-                <Text>{settings?.enabled ? 'Enabled' : 'Disabled'}</Text>
+                <Text>{settings?.enabled ? 'Đang bật' : 'Đang tắt'}</Text>
               </Space>
             </Descriptions.Item>
             <Descriptions.Item label="Broker">
@@ -340,8 +341,8 @@ export default function MqttSettings() {
             <Descriptions.Item label="TLS">
               {settings?.useTls ? 'On' : 'Off'}
             </Descriptions.Item>
-            <Descriptions.Item label="Password">
-              {settings?.hasPassword ? 'Saved' : 'Not set'}
+            <Descriptions.Item label="Mật khẩu">
+              {settings?.hasPassword ? 'Đã lưu' : 'Chưa đặt'}
             </Descriptions.Item>
           </Descriptions>
         </Card>

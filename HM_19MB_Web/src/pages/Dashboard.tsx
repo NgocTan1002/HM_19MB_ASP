@@ -1,4 +1,4 @@
-import {
+﻿import {
   Alert,
   Button,
   Card,
@@ -50,20 +50,20 @@ export default function Dashboard() {
     }
 
     if (connectionState === 'disconnected') {
-      return `Phien ${currentSessionId} da san sang.`;
+      return `Phiên ${currentSessionId} đã sẵn sàng.`;
     }
 
     if (currentBlock === null) {
-      return `Dang cho du lieu tu phien ${currentSessionId}.`;
+      return `Đang chờ dữ liệu từ phiên ${currentSessionId}.`;
     }
 
-    return `Dang theo doi phien ${currentSessionId}.`;
+    return `Đang theo dõi phiên ${currentSessionId}.`;
   }, [connectionState, currentBlock, currentSessionId]);
 
   const connectionPanelTitle =
     connectionPanelMode === 'create'
-      ? 'Bat dau phien do moi'
-      : 'Ket noi phien dang chon';
+      ? 'Bắt đầu phiên đo mới'
+      : 'Kết nối phiên đang chọn';
 
   const headerActionsTarget =
     typeof document === 'undefined'
@@ -172,13 +172,13 @@ export default function Dashboard() {
         {connectionPanelMode === 'connect' ? (
           <div className="start-run-panel">
             <Text type="secondary">
-              Phien {currentSessionId} da duoc chon. He thong se tu nhan thiet
-              bi tu frame dau tien ma Agent hoac MQTT gui len.
+              Phiên {currentSessionId} đã được chọn. Hệ thống sẽ tự nhận thiết
+              bị từ frame đầu tiên mà Agent hoặc MQTT gửi lên.
             </Text>
             {connectionError !== null && (
               <Alert
                 closable
-                message="Khong the ket noi SignalR"
+                message="Không thể kết nối SignalR"
                 onClose={() => setConnectionError(null)}
                 showIcon
                 type="error"
@@ -186,7 +186,7 @@ export default function Dashboard() {
               />
             )}
             <Button type="primary" onClick={handleReconnectFromPanel}>
-              Ket noi phien hien tai
+              Kết nối phiên hiện tại
             </Button>
           </div>
         ) : connectionPanelMode === 'create' ? (
@@ -194,7 +194,7 @@ export default function Dashboard() {
             {startError !== null && (
               <Alert
                 closable
-                message="Khong the bat dau phien do"
+                message="Không thể bắt đầu phiên đo"
                 onClose={() => setStartError(null)}
                 showIcon
                 type="error"
@@ -204,7 +204,7 @@ export default function Dashboard() {
             <SessionForm
               loading={isStartingRun}
               onSubmit={handleStartRunFromPanel}
-              submitText="Bat dau do"
+              submitText="Bắt đầu đo"
             />
           </div>
         ) : null}
@@ -213,7 +213,7 @@ export default function Dashboard() {
       {connectionError !== null && isRunActive && (
         <Alert
           closable
-          message="Khong the ket noi SignalR"
+          message="Không thể kết nối SignalR"
           onClose={() => setConnectionError(null)}
           showIcon
           type="error"
@@ -228,7 +228,7 @@ export default function Dashboard() {
 
       <Row gutter={[16, 16]}>
         <Col xs={24} xl={14}>
-          <Card className="dashboard-card" title="Bieu do real-time">
+          <Card className="dashboard-card" title="Biểu đồ real-time">
             <TemperatureChart
               historicalData={chartBuffer}
               height={560}
@@ -240,7 +240,7 @@ export default function Dashboard() {
         </Col>
 
         <Col xs={24} xl={10}>
-          <Card className="dashboard-card" title="Du lieu dau do">
+          <Card className="dashboard-card" title="Dữ liệu đầu dò">
             <ProbeDataTable
               block={currentBlock}
               showTemperature
@@ -252,3 +252,4 @@ export default function Dashboard() {
     </section>
   );
 }
+

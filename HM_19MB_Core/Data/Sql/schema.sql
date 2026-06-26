@@ -256,3 +256,38 @@ ALTER TABLE chi_tiet_lan_do
     ADD CONSTRAINT uq_ctld_hc_lan
         UNIQUE (ket_qua_hc_id, lan_do);
 
+
+-- Auth tables
+CREATE TABLE IF NOT EXISTS nguoi_dung (
+    id                  SERIAL          PRIMARY KEY,
+    ho_ten              VARCHAR(150)    NOT NULL DEFAULT '',
+    email               VARCHAR(255)    NOT NULL,
+    mat_khau_hash       TEXT            NOT NULL,
+    vai_tro             VARCHAR(50)     NOT NULL DEFAULT 'user',
+    ngay_tao            TIMESTAMP       NOT NULL DEFAULT NOW(),
+    lan_dang_nhap_cuoi  TIMESTAMP       NULL,
+    CONSTRAINT uq_nguoi_dung_email UNIQUE (email)
+);
+
+CREATE TABLE IF NOT EXISTS phien_dang_nhap (
+    token_hash          VARCHAR(128)    PRIMARY KEY,
+    nguoi_dung_id       INT             NOT NULL
+                                      REFERENCES nguoi_dung(id) ON DELETE CASCADE,
+    het_han             TIMESTAMP       NOT NULL,
+    ngay_tao            TIMESTAMP       NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_phien_dang_nhap_user
+    ON phien_dang_nhap(nguoi_dung_id);
+
+CREATE TABLE IF NOT EXISTS token_dat_lai_mat_khau (
+    token_hash          VARCHAR(128)    PRIMARY KEY,
+    nguoi_dung_id       INT             NOT NULL
+                                      REFERENCES nguoi_dung(id) ON DELETE CASCADE,
+    het_han             TIMESTAMP       NOT NULL,
+    da_su_dung          BOOLEAN         NOT NULL DEFAULT FALSE,
+    ngay_tao            TIMESTAMP       NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_token_dat_lai_mat_khau_user
+    ON token_dat_lai_mat_khau(nguoi_dung_id);

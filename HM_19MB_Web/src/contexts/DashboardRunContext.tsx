@@ -351,7 +351,7 @@ export function DashboardRunProvider({ children }: DashboardRunProviderProps) {
         currentSessionIdRef.current ?? activeRunSessionIdRef.current;
 
       if (targetSessionId === null) {
-        setConnectionError('Chua chon phien do de ket noi lai.');
+        setConnectionError('Chưa chọn phiên đo để kết nối lại.');
         return;
       }
 
@@ -372,7 +372,7 @@ export function DashboardRunProvider({ children }: DashboardRunProviderProps) {
         activeRunSessionIdRef.current = null;
         setConnectionState('disconnected');
         setConnectionError(
-          err instanceof Error ? err.message : 'Khong the ket noi lai phien do'
+          err instanceof Error ? err.message : 'Không thể kết nối lại phiên đo'
         );
       }
     }
@@ -404,7 +404,7 @@ export function DashboardRunProvider({ children }: DashboardRunProviderProps) {
 
         setConnectionState('disconnected');
         setStartError(
-          err instanceof Error ? err.message : 'Khong the bat dau phien do moi'
+          err instanceof Error ? err.message : 'Không thể bắt đầu phiên đo mới'
         );
       } finally {
         setIsStartingRun(false);

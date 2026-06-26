@@ -1,6 +1,8 @@
 using System.Text;
 using HM_19MB_Core;
 using MQTTnet;
+using System.Net;
+using System.Net.Sockets;
 
 namespace HM_19MB_API.Services
 {
@@ -58,7 +60,9 @@ namespace HM_19MB_API.Services
                     client = factory.CreateMqttClient();
                     client.ApplicationMessageReceivedAsync += HandleMessageAsync;
 
-                    var mqttOptions = BuildClientOptions(settings);
+                    var connectHost =
+                        await ResolveConnectHostAsync(settings, stoppingToken);
+                    var mqttOptions = BuildClientOptions(settings, connectHost);
                     reconnectWaitCts =
                         CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
                     var reconnectTask =
@@ -66,7 +70,7 @@ namespace HM_19MB_API.Services
 
                     _logger.LogInformation(
                         "MQTT connecting to {Host}:{Port}",
-                        settings.Host,
+                        connectHost,
                         settings.Port);
 
                     using var connectTimeoutCts =
@@ -154,11 +158,12 @@ namespace HM_19MB_API.Services
         }
 
         private static MqttClientOptions BuildClientOptions(
-            MqttRuntimeSettings settings)
+            MqttRuntimeSettings settings,
+            string connectHost)
         {
             var builder = new MqttClientOptionsBuilder()
                 .WithClientId(settings.ClientId)
-                .WithTcpServer(settings.Host, settings.Port)
+                .WithTcpServer(connectHost, settings.Port)
                 .WithCleanSession();
 
             if (!string.IsNullOrWhiteSpace(settings.Username))
@@ -177,6 +182,24 @@ namespace HM_19MB_API.Services
             }
 
             return builder.Build();
+        }
+
+        private static async Task<string> ResolveConnectHostAsync(
+            MqttRuntimeSettings settings,
+            CancellationToken cancellationToken)
+        {
+            if (settings.UseTls ||
+                IPAddress.TryParse(settings.Host, out _))
+            {
+                return settings.Host;
+            }
+
+            var addresses =
+                await Dns.GetHostAddressesAsync(settings.Host, cancellationToken);
+            var ipv4 = addresses.FirstOrDefault(
+                address => address.AddressFamily == AddressFamily.InterNetwork);
+
+            return ipv4?.ToString() ?? settings.Host;
         }
 
         private async Task<bool> WaitUntilReconnectOrDisconnectAsync(

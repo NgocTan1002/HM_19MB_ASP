@@ -2,12 +2,15 @@ import {
   BarChartOutlined,
   CalculatorOutlined,
   DatabaseOutlined,
+  LogoutOutlined,
   SettingOutlined,
+  UserOutlined,
 } from '@ant-design/icons';
-import { FloatButton, Grid, Layout as AntLayout, Menu, Typography } from 'antd';
+import { Button, FloatButton, Grid, Layout as AntLayout, Menu, Space, Typography } from 'antd';
 import type { MenuProps } from 'antd';
 import { useEffect, useMemo, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/useAuth';
 import { useSession } from '../contexts/useSession';
 import {
   CALIBRATION_DRAFT_CHANGED_EVENT,
@@ -46,6 +49,7 @@ export default function AppLayout() {
   const screens = Grid.useBreakpoint();
   const location = useLocation();
   const navigate = useNavigate();
+  const { logout, user } = useAuth();
   const { currentSessionId } = useSession();
   const [calibrationDraft, setCalibrationDraft] =
     useState<MinimizedCalibrationDraft | null>(() =>
@@ -161,6 +165,19 @@ export default function AppLayout() {
           <div className="app-header-right">
             <div id="app-header-actions" className="app-header-actions" />
             <SessionSelector />
+            <Space className="app-user-menu" size={8}>
+              <UserOutlined />
+              <Text className="app-user-name">{user?.fullName}</Text>
+              <Button
+                icon={<LogoutOutlined />}
+                onClick={() => {
+                  void logout();
+                  navigate('/auth', { replace: true });
+                }}
+                title="Đăng xuất"
+                type="text"
+              />
+            </Space>
           </div>
         </Header>
 
@@ -174,7 +191,7 @@ export default function AppLayout() {
             description={`STT ${calibrationDraft.stt}`}
             icon={<CalculatorOutlined />}
             onClick={handleResumeCalibrationDraft}
-            tooltip="Tiep tuc nhap du lieu hieu chuan"
+            tooltip="Tiếp tục nhập dữ liệu hiệu chuẩn"
           />
         ) : null}
       </AntLayout>

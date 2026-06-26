@@ -73,6 +73,18 @@ body {
   display: none;
 }
 
+.app-user-menu {
+  max-width: 220px;
+  min-width: 0;
+}
+
+.app-user-name {
+  max-width: 130px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .session-selector {
   width: min(360px, 48vw);
 }
@@ -98,6 +110,10 @@ body {
 
   .app-header-right {
     gap: 8px;
+  }
+
+  .app-user-name {
+    display: none;
   }
 
   .app-header-actions .ant-space {

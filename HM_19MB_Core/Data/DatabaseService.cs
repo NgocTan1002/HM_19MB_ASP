@@ -45,7 +45,7 @@ namespace HM_19MB_Core.Data
                 "Thiếu biến môi trường POSTGRES_CONN.");
 
         // Tạo bảng và đăng ký function nếu chưa tồn tại
-        private const int SCHEMA_VERSION = 7;
+        private const int SCHEMA_VERSION = 8;
         private static bool _schemaEnsured = false;
 
         /// <summary>

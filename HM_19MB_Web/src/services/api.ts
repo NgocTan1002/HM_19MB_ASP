@@ -44,6 +44,15 @@ const client = axios.create({
     headers: { 'Content-Type': 'application/json' },
 });
 
+client.interceptors.request.use(config => {
+    const token = localStorage.getItem('hm19mb.auth.token');
+    if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+    }
+
+    return config;
+});
+
 export class ApiError extends Error {
     status?: number;
     url?: string;
@@ -76,7 +85,7 @@ function readApiMessage(data: unknown): string | null {
     return message?.trim() ?? null;
 }
 
-export function getErrorMessage(error: unknown, fallback = 'Loi he thong'): string {
+export function getErrorMessage(error: unknown, fallback = 'Lỗi hệ thống'): string {
     if (error instanceof Error && error.message.trim().length > 0) {
         return error.message;
     }
@@ -94,7 +103,7 @@ client.interceptors.response.use(
         const message =
             readApiMessage(err.response?.data) ||
             err.message ||
-            'Khong the ket noi den API';
+            'Không thể kết nối đến API';
 
         console.error('[API Error]', err.response?.status, err.config?.url, message);
 
@@ -234,3 +243,41 @@ export function downloadBlob(blob: Blob, filename: string) {
     a.click();
     URL.revokeObjectURL(url);
 }
+
+export interface AuthUser {
+    id: number;
+    fullName: string;
+    email: string;
+    role: string;
+}
+
+export interface AuthResult {
+    user: AuthUser;
+    token: string;
+}
+
+export interface ForgotPasswordResponse {
+    message: string;
+    resetToken: string | null;
+    resetUrl: string | null;
+}
+
+export const authApi = {
+    register: (payload: { fullName: string; email: string; password: string }) =>
+        client.post<AuthResult>('/api/auth/register', payload),
+
+    login: (payload: { email: string; password: string }) =>
+        client.post<AuthResult>('/api/auth/login', payload),
+
+    me: () =>
+        client.get<AuthUser>('/api/auth/me'),
+
+    logout: () =>
+        client.post('/api/auth/logout'),
+
+    forgotPassword: (payload: { email: string }) =>
+        client.post<ForgotPasswordResponse>('/api/auth/forgot-password', payload),
+
+    resetPassword: (payload: { token: string; newPassword: string }) =>
+        client.post('/api/auth/reset-password', payload),
+};

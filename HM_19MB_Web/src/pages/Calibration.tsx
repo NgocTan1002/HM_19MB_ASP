@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Button,
@@ -119,7 +119,7 @@ export default function Calibration() {
     if (resultsError !== null) {
       console.error('[Calibration] Load results failed:', resultsError);
       message.error(
-        getErrorMessage(resultsError, 'Khong tai duoc bang ket qua hieu chuan')
+        getErrorMessage(resultsError, 'Không tải được bảng kết quả hiệu chuẩn')
       );
     }
   }, [resultsError]);
@@ -143,11 +143,11 @@ export default function Calibration() {
       }
 
       await invalidateResults();
-      message.success('Da xoa');
+      message.success('Đã xóa');
     },
     onError: (error) => {
       console.error('[Calibration] Delete failed:', error);
-      message.error(getErrorMessage(error, 'Khong xoa duoc ket qua hieu chuan'));
+      message.error(getErrorMessage(error, 'Không xóa được kết quả hiệu chuẩn'));
     },
   });
 
@@ -165,11 +165,11 @@ export default function Calibration() {
       setActiveEditor(null);
       setLatestResult(null);
       setActiveDraftState(null);
-      message.success('Da luu ket qua hieu chuan');
+      message.success('Đã lưu kết quả hiệu chuẩn');
     },
     onError: (error) => {
       console.error('[Calibration] Save failed:', error);
-      message.error(getErrorMessage(error, 'Khong luu duoc ket qua hieu chuan'));
+      message.error(getErrorMessage(error, 'Không lưu được kết quả hiệu chuẩn'));
     },
   });
 
@@ -191,15 +191,15 @@ export default function Calibration() {
     }
 
     const titleText = activeEditor.mode === 'add'
-      ? `Them diem do moi - STT ${activeEditor.stt}`
-      : `Sua diem do - STT ${activeEditor.stt}`;
+      ? `Thêm điểm đo mới - STT ${activeEditor.stt}`
+      : `Sửa điểm đo - STT ${activeEditor.stt}`;
 
     return (
       <div className="calibration-editor-title">
         <span>{titleText}</span>
         <div className="calibration-editor-window-actions">
           <Button
-            aria-label="Thu nho form"
+            aria-label="Thu nhỏ form"
             disabled={saveMutation.isPending || loadingEditor}
             icon={<CompressOutlined />}
             onClick={() => {
@@ -223,12 +223,12 @@ export default function Calibration() {
               setActiveEditor(null);
               setLatestResult(null);
               setActiveDraftState(null);
-              message.info('Da an form hieu chuan tam thoi');
+              message.info('Đã ẩn form hiệu chuẩn tạm thời');
             }}
             type="text"
           />
           <Button
-            aria-label="Dong form"
+            aria-label="Đóng form"
             disabled={saveMutation.isPending || loadingEditor}
             icon={<CloseOutlined />}
             onClick={handleCancel}
@@ -273,7 +273,7 @@ export default function Calibration() {
       }
 
       if (row.id === undefined) {
-        message.error('Khong tim thay ID ket qua de tai chi tiet');
+        message.error('Không tìm thấy ID kết quả để tải chi tiết');
         return;
       }
 
@@ -297,7 +297,7 @@ export default function Calibration() {
         });
       } catch (error) {
         console.error('[Calibration] Load result details failed:', error);
-        message.error(getErrorMessage(error, 'Khong tai duoc chi tiet lan do'));
+        message.error(getErrorMessage(error, 'Không tải được chi tiết lần đo'));
       } finally {
         setLoadingEditor(false);
       }
@@ -378,9 +378,9 @@ export default function Calibration() {
 
   if (sessionId === null) {
     return (
-      <Empty description="Chon phien do truoc">
+      <Empty description="Chọn phiên đo trước">
         <Button type="primary" onClick={handleGoToSessions}>
-          Den trang phien do
+          Đến trang phiên đo
         </Button>
       </Empty>
     );
@@ -461,7 +461,7 @@ export default function Calibration() {
           <Space wrap className="calibration-results-actions">
             <ExportButtons sessionId={sessionId} kenhCount={maxChannels} />
             <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>
-              Them diem do moi
+              Thêm điểm đo mới
             </Button>
           </Space>
         }
@@ -481,3 +481,4 @@ export default function Calibration() {
     </section>
   );
 }
+
