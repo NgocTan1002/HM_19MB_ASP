@@ -45,6 +45,17 @@ builder.Services.AddCors(options =>
     });
 });
 
+var postgresConnection =
+    builder.Configuration.GetConnectionString("Postgres")
+    ?? Environment.GetEnvironmentVariable("POSTGRES_CONN");
+
+if (string.IsNullOrWhiteSpace(postgresConnection))
+{
+    throw new InvalidOperationException("Missing ConnectionStrings:Postgres.");
+}
+
+DatabaseService.ConfigureConnectionString(postgresConnection);
+
 var app = builder.Build();
 
 app.UseCors("AllowFrontend");

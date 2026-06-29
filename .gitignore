@@ -4,3 +4,5 @@
 # .NET build output
 **/[Bb]in/
 **/[Oo]bj/
+
+HM_19MB_API/appsettings.Development.local.json

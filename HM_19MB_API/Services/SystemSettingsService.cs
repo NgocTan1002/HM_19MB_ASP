@@ -17,10 +17,7 @@ namespace HM_19MB_API.Services
 
         private readonly IOptions<MqttOptions> _defaults;
 
-        private static string ConnectionString =>
-            Environment.GetEnvironmentVariable("POSTGRES_CONN")
-            ?? throw new InvalidOperationException(
-                "Missing POSTGRES_CONN environment variable.");
+        private static string ConnectionString => DatabaseService.ConnectionString;
 
         public SystemSettingsService(IOptions<MqttOptions> defaults)
         {

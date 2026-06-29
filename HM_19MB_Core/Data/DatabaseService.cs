@@ -39,10 +39,17 @@ namespace HM_19MB_Core.Data
 
     public static partial class DatabaseService
     {
-        private static string ConnectionString =>
-            Environment.GetEnvironmentVariable("POSTGRES_CONN")
-            ?? throw new InvalidOperationException(
-                "Thiếu biến môi trường POSTGRES_CONN.");
+        private static string? _connectionString;
+
+        public static void ConfigureConnectionString(string connectionString)
+        {
+            _connectionString = connectionString;
+        }
+
+        public static string ConnectionString =>
+            _connectionString
+            ?? Environment.GetEnvironmentVariable("POSTGRES_CONN")
+            ?? throw new InvalidOperationException("Missing database connection string.");
 
         // Tạo bảng và đăng ký function nếu chưa tồn tại
         private const int SCHEMA_VERSION = 8;

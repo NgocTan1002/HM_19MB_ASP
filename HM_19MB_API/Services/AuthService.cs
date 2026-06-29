@@ -9,11 +9,6 @@ public sealed class AuthService
     private static readonly TimeSpan SessionLifetime = TimeSpan.FromDays(7);
     private static readonly TimeSpan ResetLifetime = TimeSpan.FromMinutes(30);
 
-    private static string ConnectionString =>
-        Environment.GetEnvironmentVariable("POSTGRES_CONN")
-        ?? throw new InvalidOperationException(
-            "Missing POSTGRES_CONN environment variable.");
-
     public async Task<AuthResult> RegisterAsync(
         RegisterRequest request,
         CancellationToken cancellationToken = default)
@@ -29,7 +24,7 @@ public sealed class AuthService
         }
 
         await DatabaseService.EnsureSchemaAsync();
-        await using var conn = new NpgsqlConnection(ConnectionString);
+        await using var conn = new NpgsqlConnection(DatabaseService.ConnectionString);
         await conn.OpenAsync(cancellationToken);
 
         var passwordHash = HashPassword(request.Password);
@@ -67,7 +62,7 @@ public sealed class AuthService
         var email = NormalizeEmail(request.Email);
 
         await DatabaseService.EnsureSchemaAsync();
-        await using var conn = new NpgsqlConnection(ConnectionString);
+        await using var conn = new NpgsqlConnection(DatabaseService.ConnectionString);
         await conn.OpenAsync(cancellationToken);
 
         await using var cmd = new NpgsqlCommand(@"
@@ -119,7 +114,7 @@ public sealed class AuthService
         }
 
         await DatabaseService.EnsureSchemaAsync();
-        await using var conn = new NpgsqlConnection(ConnectionString);
+        await using var conn = new NpgsqlConnection(DatabaseService.ConnectionString);
         await conn.OpenAsync(cancellationToken);
 
         await using var cmd = new NpgsqlCommand(@"
@@ -147,7 +142,7 @@ public sealed class AuthService
         }
 
         await DatabaseService.EnsureSchemaAsync();
-        await using var conn = new NpgsqlConnection(ConnectionString);
+        await using var conn = new NpgsqlConnection(DatabaseService.ConnectionString);
         await conn.OpenAsync(cancellationToken);
 
         await using var cmd = new NpgsqlCommand(@"
@@ -165,7 +160,7 @@ public sealed class AuthService
         var email = NormalizeEmail(request.Email);
 
         await DatabaseService.EnsureSchemaAsync();
-        await using var conn = new NpgsqlConnection(ConnectionString);
+        await using var conn = new NpgsqlConnection(DatabaseService.ConnectionString);
         await conn.OpenAsync(cancellationToken);
 
         var userId = await FindUserIdByEmailAsync(conn, email, cancellationToken);
@@ -201,7 +196,7 @@ public sealed class AuthService
         ValidatePassword(request.NewPassword);
 
         await DatabaseService.EnsureSchemaAsync();
-        await using var conn = new NpgsqlConnection(ConnectionString);
+        await using var conn = new NpgsqlConnection(DatabaseService.ConnectionString);
         await conn.OpenAsync(cancellationToken);
         await using var tx = await conn.BeginTransactionAsync(cancellationToken);
 
