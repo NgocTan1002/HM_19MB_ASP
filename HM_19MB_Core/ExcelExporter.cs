@@ -183,6 +183,8 @@ namespace HM_19MB_Core
             return new Dictionary<string, string>
             {
                 ["{{STT}}"] = (row.STT > 0 ? row.STT : index + 1).ToString(),
+                ["{{DaiLuong}}"] = row.TenDaiLuong,
+                ["{{DonVi}}"] = row.Unit,
                 ["{{GiaTriDat}}"] = row.GiaTriDat.ToString("F1"),
                 ["{{GiaTriChiThi}}"] = row.GiaTriChiThi.ToString("F2"),
                 ["{{TrungBinh}}"] = row.GiaTriTrungBinh.ToString("F2"),
@@ -263,19 +265,54 @@ namespace HM_19MB_Core
             string filePath)
             => Task.Run(() => CreateExcelFromTemplate(filePath, meta, calibRows, kenhCount));
 
+        private static string ResolveExcelTemplateFileName(
+            string templatesDir,
+            int channelCount,
+            List<CalibrationResultRow> calibRows)
+        {
+            string positionName = channelCount <= 3
+                ? "3Pos"
+                : channelCount <= 5
+                    ? "5Pos"
+                    : "9Pos";
+            string baseName = $"Tu_nhiet_{positionName}.xlsx";
+
+            bool hasHumidity = calibRows.Any(row => row.IsHumidity);
+            bool hasTemperature = calibRows.Any(row => !row.IsHumidity);
+
+            if (hasHumidity != hasTemperature)
+            {
+                string suffix = hasHumidity ? "Am" : "Nhiet";
+                string quantityTemplate = $"Tu_nhiet_{positionName}_{suffix}.xlsx";
+                if (File.Exists(Path.Combine(templatesDir, quantityTemplate)))
+                    return quantityTemplate;
+            }
+
+            if (File.Exists(Path.Combine(templatesDir, baseName)))
+                return baseName;
+
+            if (channelCount > 5)
+                return "Tu_nhiet_V3_-_Pos9.xlsx";
+
+            return channelCount <= 3
+                ? "Tu_nhiet_3Pos.xlsx"
+                : "Tu_nhiet_5Pos.xlsx";
+        }
+
         private static void CreateExcelFromTemplate(
             string filePath,
             SessionMetadata meta,
             List<CalibrationResultRow> calibRows,
             int kenhCount)
         {
-            // Xác định template dựa trên số kênh
             int channelCount = GetExportChannelCount(calibRows, kenhCount);
-            string templateFileName = channelCount <= 3
-                ? "Tu_nhiet_3Pos.xlsx"
-                : channelCount <= 5
-                    ? "Tu_nhiet_5Pos.xlsx"
-                    : "Tu_nhiet_V3_-_Pos9.xlsx";
+            string templatesDir = Path.Combine(
+                AppDomain.CurrentDomain.BaseDirectory,
+                "Resources", "Templates");
+            string templateFileName = ResolveExcelTemplateFileName(
+                templatesDir,
+                channelCount,
+                calibRows);
 
             string sheetName = channelCount <= 3
                 ? "3 Pos"
@@ -283,9 +320,7 @@ namespace HM_19MB_Core
                     ? "5 Pos"
                     : "9 Pos";
 
-            string templatePath = Path.Combine(
-                AppDomain.CurrentDomain.BaseDirectory,
-                "Resources", "Templates", templateFileName);
+            string templatePath = Path.Combine(templatesDir, templateFileName);
 
             if (!File.Exists(templatePath))
                 throw new FileNotFoundException($"Không tìm thấy template: {templatePath}");

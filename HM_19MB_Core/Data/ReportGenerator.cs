@@ -283,7 +283,7 @@ namespace HM_19MB_Core.Data
             {
                 new()
                 {
-                    "STT", "Gia tri dat", "Chi thi TB",
+                    "STT", "Dai luong", "Don vi", "Gia tri dat", "Chi thi TB",
                     "Kenh 1", "Kenh 2", "Kenh 3", "Kenh 4", "Kenh 5",
                     "Kenh 6", "Kenh 7", "Kenh 8", "Kenh 9", "Kenh 10",
                     "t_ch", "Delta t", "Do on dinh", "Do dong deu", "U",
@@ -296,6 +296,8 @@ namespace HM_19MB_Core.Data
                 var values = new List<object?>
                 {
                     row.STT,
+                    row.TenDaiLuong,
+                    row.Unit,
                     ToExcelNumber(row.GiaTriDat),
                     ToExcelNumber(row.GiaTriChiThi)
                 };

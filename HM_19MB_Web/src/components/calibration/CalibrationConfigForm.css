@@ -33,6 +33,13 @@
   min-height: 32px;
 }
 
+.calibration-config-mode-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 32px;
+}
+
 .calibration-correction-row {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
@@ -183,6 +190,12 @@
   }
 
   .calibration-config-method-row {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .calibration-config-mode-row {
     align-items: flex-start;
     flex-direction: column;
     gap: 8px;

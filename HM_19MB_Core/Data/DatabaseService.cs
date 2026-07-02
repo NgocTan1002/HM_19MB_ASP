@@ -52,7 +52,7 @@ namespace HM_19MB_Core.Data
             ?? throw new InvalidOperationException("Missing database connection string.");
 
         // Tạo bảng và đăng ký function nếu chưa tồn tại
-        private const int SCHEMA_VERSION = 8;
+        private const int SCHEMA_VERSION = 10;
         private static bool _schemaEnsured = false;
 
         /// <summary>

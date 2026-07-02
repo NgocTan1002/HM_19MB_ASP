@@ -1,3 +1,6 @@
+export type CalibrationQuantity = 'NhietDo' | 'DoAm';
+export type CalibrationMode = CalibrationQuantity | 'Both';
+
 export interface SessionMetadata {
   id?: number;
   tenThietBi: string;
@@ -61,6 +64,9 @@ export interface ChiTietLanDo {
 export interface CalibrationResultRow {
   id?: number;
   stt: number;
+  daiLuong?: CalibrationQuantity | string;
+  unit?: string;
+  tenDaiLuong?: string;
   giaTriDat: number;
   giaTriChiThi: number;
   kenh: (number | null)[];

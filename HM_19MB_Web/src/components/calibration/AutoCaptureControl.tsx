@@ -10,7 +10,7 @@ import {
   Typography,
 } from 'antd';
 import { createHubClient, type MeasurementHubClient } from '../../services/signalr';
-import type { MeasurementBlock } from '../../types/models';
+import type { CalibrationQuantity, MeasurementBlock } from '../../types/models';
 
 const { Text } = Typography;
 
@@ -21,6 +21,7 @@ export interface AutoCaptureControlProps {
   sessionId: number;
   j: number;
   targetTemp: number;
+  quantity?: CalibrationQuantity;
   tolerance: number;
   onCapture: (channelValues: number[], chiThiUut: number) => void;
   disabled?: boolean;
@@ -60,6 +61,7 @@ function getStatusText(
   status: CaptureStatus,
   capturedCount: number,
   currentTemperature: number | null,
+  unit: string,
   timing: CaptureTiming,
   stableMinutes: number,
   errorMessage: string | null
@@ -71,7 +73,7 @@ function getStatusText(
   if (status === 'waiting') {
     return currentTemperature === null
       ? 'Đang chờ dữ liệu...'
-      : `Chờ vào vùng ổn định, hiện tại ${currentTemperature.toFixed(2)}°C`;
+      : `Cho vao vung on dinh, hien tai ${currentTemperature.toFixed(2)}${unit}`;
   }
 
   if (status === 'stabilizing') {
@@ -95,18 +97,28 @@ function getStatusText(
   return 'Chưa chạy';
 }
 
-function getChannelValues(block: MeasurementBlock, expectedChannels: number): number[] {
+function getQuantityChannelValues(
+  block: MeasurementBlock,
+  expectedChannels: number,
+  quantity: CalibrationQuantity
+): number[] {
+  const source =
+    quantity === 'DoAm' ? block.probeHumidities : block.probeTemperatures;
   const availableChannels = Math.min(
     Math.max(0, block.probeCount),
-    block.probeTemperatures.length,
+    source.length,
     10
   );
   const captureChannels = Math.min(Math.max(0, expectedChannels), availableChannels);
 
   return Array.from({ length: captureChannels }, (_item, index) => {
-    const value = block.probeTemperatures[index];
+    const value = source[index];
     return Number.isFinite(value) ? value : Number.NaN;
   });
+}
+
+function getQuantityAverage(block: MeasurementBlock, quantity: CalibrationQuantity): number {
+  return quantity === 'DoAm' ? block.avgHumidity : block.avgTemperature;
 }
 
 function getNowFromBlock(block: MeasurementBlock): number {
@@ -118,6 +130,7 @@ function AutoCaptureControl({
   sessionId,
   j,
   targetTemp,
+  quantity = 'NhietDo',
   tolerance,
   onCapture,
   disabled = false,
@@ -145,6 +158,7 @@ function AutoCaptureControl({
   const onCaptureRef = useRef(onCapture);
   const jRef = useRef(j);
   const targetTempRef = useRef(targetTemp);
+  const quantityRef = useRef<CalibrationQuantity>(quantity);
   const toleranceRef = useRef(toleranceValue);
   const maxCapturesRef = useRef(maxCaptures);
   const intervalMinutesRef = useRef(intervalMinutes);
@@ -155,6 +169,7 @@ function AutoCaptureControl({
     onCaptureRef.current = onCapture;
     jRef.current = j;
     targetTempRef.current = targetTemp;
+    quantityRef.current = quantity;
     toleranceRef.current = toleranceValue;
     maxCapturesRef.current = maxCaptures;
     intervalMinutesRef.current = intervalMinutes;
@@ -166,6 +181,7 @@ function AutoCaptureControl({
     j,
     maxCaptures,
     onCapture,
+    quantity,
     stableMinutes,
     targetTemp,
     toleranceValue,
@@ -200,9 +216,11 @@ function AutoCaptureControl({
 
   const captureBlock = useCallback(
     (block: MeasurementBlock, now: number) => {
-      const channelValues = getChannelValues(block, jRef.current);
+      const quantity = quantityRef.current;
+      const channelValues = getQuantityChannelValues(block, jRef.current, quantity);
+      const chiThiUut = getQuantityAverage(block, quantity);
 
-      onCaptureRef.current(channelValues, block.avgTemperature);
+      onCaptureRef.current(channelValues, chiThiUut);
       capturedCountRef.current += 1;
       lastCaptureAtRef.current = now;
 
@@ -225,7 +243,7 @@ function AutoCaptureControl({
 
   const handleBlock = useCallback(
     (block: MeasurementBlock) => {
-      const avgTemperature = block.avgTemperature;
+      const avgTemperature = getQuantityAverage(block, quantityRef.current);
 
       if (!Number.isFinite(avgTemperature)) {
         return;
@@ -370,6 +388,7 @@ function AutoCaptureControl({
     status,
     capturedCount,
     currentTemperature,
+    quantity === 'DoAm' ? '%RH' : '\u00B0C',
     timing,
     stableMinutes,
     errorMessage
@@ -404,7 +423,7 @@ function AutoCaptureControl({
           value={toleranceValue}
           disabled={running || disabled || !autoEnabled}
           onChange={(value) => setToleranceValue(value ?? 0.5)}
-          addonAfter="°C"
+          addonAfter={quantity === 'DoAm' ? '%RH' : '\u00B0C'}
           style={{ width: 120 }}
         />
 

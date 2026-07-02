@@ -149,6 +149,7 @@ CREATE TABLE IF NOT EXISTS ket_qua_hieu_chuan (
     do_phan_giai        FLOAT           NULL,
     he_so_phan_giai     FLOAT           NULL,
     thong_so_chuan_json TEXT            NULL,
+    dai_luong           VARCHAR(20)     NOT NULL DEFAULT 'NhietDo',
 
     ngay_tao            TIMESTAMP       NOT NULL DEFAULT NOW()
 );
@@ -186,7 +187,10 @@ ALTER TABLE ket_qua_hieu_chuan
     DROP CONSTRAINT IF EXISTS uq_kqhc_phien_stt;
 
 ALTER TABLE ket_qua_hieu_chuan
-    ADD CONSTRAINT uq_kqhc_phien_stt UNIQUE (phien_id, stt);
+    ADD COLUMN IF NOT EXISTS dai_luong VARCHAR(20) NOT NULL DEFAULT 'NhietDo';
+
+ALTER TABLE ket_qua_hieu_chuan
+    ADD CONSTRAINT uq_kqhc_phien_stt UNIQUE (phien_id, stt, dai_luong);
 
 
 ALTER TABLE ket_qua_hieu_chuan

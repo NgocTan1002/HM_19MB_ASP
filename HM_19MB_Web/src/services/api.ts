@@ -197,9 +197,10 @@ export const calibrationApi = {
             `/api/sessions/${sessionId}/calibration/results`
         ),
 
-    delete: (sessionId: number, stt: number) =>
+    delete: (sessionId: number, stt: number, daiLuong = 'NhietDo') =>
         client.delete(
-            `/api/sessions/${sessionId}/calibration/results/${stt}`
+            `/api/sessions/${sessionId}/calibration/results/${stt}`,
+            { params: { daiLuong } }
         ),
 
     getChiTiet: (sessionId: number, ketQuaHcId: number) =>

@@ -8,8 +8,12 @@ namespace HM_19MB_Core.Data
 {
     public class CalibrationResultRow
     {
+        public const string DaiLuongNhietDo = "NhietDo";
+        public const string DaiLuongDoAm = "DoAm";
+
         public int Id { get; set; }
         public int STT { get; set; }
+        public string DaiLuong { get; set; } = DaiLuongNhietDo;
 
         public double GiaTriDat { get; set; }
         public double GiaTriChiThi { get; set; }
@@ -37,6 +41,14 @@ namespace HM_19MB_Core.Data
 
         // Dữ liệu thô từng lần đo (không lưu DB trực tiếp — qua chi_tiet_lan_do)
         public List<ChiTietLanDo>? ChiTietLanDos { get; set; }
+
+        public bool IsHumidity =>
+            string.Equals(DaiLuong, DaiLuongDoAm, StringComparison.OrdinalIgnoreCase);
+
+        public string Unit => IsHumidity ? "%RH" : "\u00B0C";
+
+        public string TenDaiLuong =>
+            IsHumidity ? "\u0110\u1ed9 \u1ea9m" : "Nhi\u1ec7t \u0111\u1ed9";
 
         public int SoKenhHopLe
         {
@@ -153,7 +165,7 @@ namespace HM_19MB_Core.Data
                 "@do_on_dinh, @do_dong_deu, @do_khong_dam_bao," +
                 "@uch, @ubk," +                    // ← bỏ uch1, uch2, ubk1..ubk4
                 "@so_kenh, @so_lan_do, @phuong_phap_b," +
-                "@do_phan_giai, @he_so_phan_giai, @thong_so_chuan_json)", conn);
+                "@do_phan_giai, @he_so_phan_giai, @thong_so_chuan_json, @dai_luong)", conn);
 
             cmd.Parameters.AddWithValue("@phien_id", phienId);
             cmd.Parameters.AddWithValue("@stt", row.STT);
@@ -185,6 +197,7 @@ namespace HM_19MB_Core.Data
             cmd.Parameters.AddWithValue("@do_phan_giai", double.IsNaN(row.DoPhanGiai) ? DBNull.Value : (object)row.DoPhanGiai);
             cmd.Parameters.AddWithValue("@he_so_phan_giai", double.IsNaN(row.HeSoPhanGiai) ? DBNull.Value : (object)row.HeSoPhanGiai);
             cmd.Parameters.AddWithValue("@thong_so_chuan_json", string.IsNullOrEmpty(row.ThongSoChuanJson) ? DBNull.Value : (object)row.ThongSoChuanJson);
+            cmd.Parameters.AddWithValue("@dai_luong", string.IsNullOrWhiteSpace(row.DaiLuong) ? CalibrationResultRow.DaiLuongNhietDo : row.DaiLuong);
 
             var result = await cmd.ExecuteScalarAsync();
             return Convert.ToInt32(result);
@@ -234,6 +247,7 @@ namespace HM_19MB_Core.Data
                     DoPhanGiai = ReadDoubleNullable(rdr, 24),
                     HeSoPhanGiai = ReadDoubleNullable(rdr, 25),
                     ThongSoChuanJson = rdr.IsDBNull(26) ? "" : rdr.GetString(26),
+                    DaiLuong = rdr.FieldCount > 27 && !rdr.IsDBNull(27) ? rdr.GetString(27) : CalibrationResultRow.DaiLuongNhietDo,
                 };
 
                 for (int i = 0; i < 10; i++)
@@ -363,15 +377,19 @@ namespace HM_19MB_Core.Data
             return list;
         }
 
-        public static async Task XoaKetQuaHieuChuanAsync(int phienId, int stt)
+        public static async Task XoaKetQuaHieuChuanAsync(
+            int phienId,
+            int stt,
+            string daiLuong = CalibrationResultRow.DaiLuongNhietDo)
         {
             await using var conn = new NpgsqlConnection(ConnectionString);
             await conn.OpenAsync();
 
             await using var cmd = new NpgsqlCommand(
-                "SELECT fn_xoa_ket_qua_hieu_chuan(@p_phien_id, @p_stt)", conn);
+                "SELECT fn_xoa_ket_qua_hieu_chuan(@p_phien_id, @p_stt, @p_dai_luong)", conn);
             cmd.Parameters.AddWithValue("@p_phien_id", phienId);
             cmd.Parameters.AddWithValue("@p_stt", stt);
+            cmd.Parameters.AddWithValue("@p_dai_luong", string.IsNullOrWhiteSpace(daiLuong) ? CalibrationResultRow.DaiLuongNhietDo : daiLuong);
             await cmd.ExecuteNonQueryAsync();
         }
 

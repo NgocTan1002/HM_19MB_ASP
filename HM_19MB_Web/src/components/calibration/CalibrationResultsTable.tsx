@@ -21,9 +21,10 @@ interface CalibrationResultsTableProps {
   rows: CalibrationResultRow[];
   loading: boolean;
   onEdit: (row: CalibrationResultRow) => void;
-  onDelete: (stt: number) => Promise<void>;
+  onDelete: (row: CalibrationResultRow) => Promise<void>;
   onRefresh: () => Promise<void>;
   editingStt?: number | null;
+  editingDaiLuong?: string | null;
 }
 
 interface DetailRow {
@@ -58,6 +59,14 @@ function normalizeChannelCount(rows: CalibrationResultRow[]): number {
     1,
     rows.reduce((max, row) => Math.max(max, row.soKenh || 0), 0)
   );
+}
+
+function getRowUnit(row: CalibrationResultRow): string {
+  return row.unit ?? (row.daiLuong === 'DoAm' ? '%RH' : '\u00B0C');
+}
+
+function getQuantityLabel(row: CalibrationResultRow): string {
+  return row.tenDaiLuong ?? (row.daiLuong === 'DoAm' ? 'Do am' : 'Nhiet do');
 }
 
 function buildDetailRows(details: ChiTietLanDo[], channelCount: number): DetailRow[] {
@@ -99,6 +108,7 @@ function CalibrationResultsTable({
   onDelete,
   onRefresh,
   editingStt,
+  editingDaiLuong,
 }: CalibrationResultsTableProps) {
   const [detailCache, setDetailCache] = useState<Map<number, ChiTietLanDo[]>>(
     () => new Map()
@@ -109,6 +119,10 @@ function CalibrationResultsTable({
 
   const maxChannels = useMemo(() => normalizeChannelCount(rows), [rows]);
   const hasRows = rows.length > 0;
+  const resultUnit = useMemo(() => {
+    const units = Array.from(new Set(rows.map(getRowUnit)));
+    return units.length === 1 ? units[0] : 'mixed';
+  }, [rows]);
 
   const handleEdit = useCallback(
     (row: CalibrationResultRow) => {
@@ -118,8 +132,8 @@ function CalibrationResultsTable({
   );
 
   const handleDelete = useCallback(
-    async (stt: number) => {
-      await onDelete(stt);
+    async (row: CalibrationResultRow) => {
+      await onDelete(row);
       await onRefresh();
     },
     [onDelete, onRefresh]
@@ -235,6 +249,13 @@ function CalibrationResultsTable({
         fixed: hasRows ? 'left' : undefined,
       },
       {
+        title: `Dai luong (${resultUnit})`,
+        key: 'daiLuong',
+        width: 95,
+        fixed: hasRows ? 'left' : undefined,
+        render: (_value, row) => getQuantityLabel(row),
+      },
+      {
         title: 'Giá trị đặt',
         dataIndex: 'giaTriDat',
         key: 'giaTriDat',
@@ -315,7 +336,7 @@ function CalibrationResultsTable({
               okText="Xóa"
               cancelText="Hủy"
               okButtonProps={{ danger: true }}
-              onConfirm={() => void handleDelete(row.stt)}
+              onConfirm={() => void handleDelete(row)}
             >
               <Button
                 danger
@@ -328,10 +349,10 @@ function CalibrationResultsTable({
         ),
       },
     ];
-  }, [handleDelete, handleEdit, hasRows, maxChannels]);
+  }, [handleDelete, handleEdit, hasRows, maxChannels, resultUnit]);
 
   const tableScroll = useMemo(
-    () => (hasRows ? { x: 900 + maxChannels * 90 } : undefined),
+    () => (hasRows ? { x: 995 + maxChannels * 90 } : undefined),
     [hasRows, maxChannels]
   );
 
@@ -358,7 +379,12 @@ function CalibrationResultsTable({
         }}
         pagination={false}
         rowClassName={(row) =>
-          row.stt === editingStt ? 'calibration-results-editing-row' : ''
+          row.stt === editingStt &&
+          (editingDaiLuong === null ||
+            editingDaiLuong === undefined ||
+            row.daiLuong === editingDaiLuong)
+            ? 'calibration-results-editing-row'
+            : ''
         }
         rowKey={(row) => row.id ?? `stt-${row.stt}`}
         rootClassName={!hasRows ? 'calibration-results-empty' : undefined}

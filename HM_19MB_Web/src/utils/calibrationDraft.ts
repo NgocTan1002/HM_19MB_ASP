@@ -1,4 +1,9 @@
-import type { CalibrationResultRow, UncertaintyResult } from '../types/models';
+import type {
+  CalibrationMode,
+  CalibrationQuantity,
+  CalibrationResultRow,
+  UncertaintyResult,
+} from '../types/models';
 import type { CalibrationFormValues } from '../components/calibration/CalibrationConfigForm';
 
 export interface CalibrationFormDraftState {
@@ -17,6 +22,8 @@ export interface MinimizedCalibrationDraft {
   giaTriDat: number;
   initialRow: CalibrationResultRow | null;
   activeTargetTemp: number;
+  activeQuantity?: CalibrationQuantity;
+  activeCalibrationMode?: CalibrationMode;
   activeJ: number;
   activeN: number;
   formState: CalibrationFormDraftState;

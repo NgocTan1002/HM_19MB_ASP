@@ -1,5 +1,6 @@
-import { Form, InputNumber, Radio, type FormInstance } from 'antd';
+import { Form, InputNumber, Radio, Segmented, type FormInstance } from 'antd';
 import { useMemo } from 'react';
+import type { CalibrationMode, CalibrationQuantity } from '../../types/models';
 import './CalibrationConfigForm.css';
 
 export interface CalibrationFormValues {
@@ -16,8 +17,12 @@ export interface CalibrationFormValues {
 interface CalibrationConfigFormProps {
   form: FormInstance<CalibrationFormValues>;
   initialValues: CalibrationFormValues;
+  quantity: CalibrationQuantity;
+  calibrationMode: CalibrationMode;
+  modeDisabled?: boolean;
   channelCount: number;
   corrections: number[];
+  onCalibrationModeChange: (mode: CalibrationMode) => void;
   onValuesChange: (
     changedValues: Partial<CalibrationFormValues>,
     allValues: CalibrationFormValues
@@ -28,8 +33,12 @@ interface CalibrationConfigFormProps {
 export default function CalibrationConfigForm({
   form,
   initialValues,
+  quantity,
+  calibrationMode,
+  modeDisabled = false,
   channelCount,
   corrections,
+  onCalibrationModeChange,
   onValuesChange,
   onCorrectionChange,
 }: CalibrationConfigFormProps) {
@@ -46,6 +55,20 @@ export default function CalibrationConfigForm({
       onValuesChange={onValuesChange}
     >
       <div className="calibration-config">
+        <div className="calibration-config-mode-row">
+          <span className="calibration-method-label">Chức năng hiệu chuẩn</span>
+          <Segmented<CalibrationMode>
+            options={[
+              { label: 'Nhiệt độ', value: 'NhietDo' },
+              { label: 'Độ ẩm', value: 'DoAm' },
+              { label: 'Nhiệt độ + Độ ẩm', value: 'Both' },
+            ]}
+            disabled={modeDisabled}
+            value={calibrationMode}
+            onChange={onCalibrationModeChange}
+          />
+        </div>
+
         <div className="calibration-config-primary-row">
           <Form.Item
             className="calibration-field-point"
@@ -53,7 +76,10 @@ export default function CalibrationConfigForm({
             label="Điểm kiểm tra"
             rules={[{ required: true, message: 'Nhập điểm kiểm tra' }]}
           >
-            <InputNumber<number> controls={false} addonAfter="°C" />
+            <InputNumber<number>
+              controls={false}
+              addonAfter={quantity === 'DoAm' ? '%RH' : '\u00B0C'}
+            />
           </Form.Item>
 
           <Form.Item className="calibration-field-count" name="j" label="Số kênh">
@@ -67,14 +93,14 @@ export default function CalibrationConfigForm({
 
         <div className="calibration-config-parameter-row">
           <div className="calibration-inline-field">
-            <span>ĐKĐBĐ mở rộng (°C)</span>
+            <span>DKDBD mo rong ({quantity === 'DoAm' ? '%RH' : '\u00B0C'})</span>
             <Form.Item name="ubk" noStyle>
               <InputNumber<number> controls={false} />
             </Form.Item>
           </div>
 
           <div className="calibration-inline-field">
-            <span>Sai số cho phép (°C)</span>
+            <span>Sai so cho phep ({quantity === 'DoAm' ? '%RH' : '\u00B0C'})</span>
             <Form.Item name="allowedError" noStyle>
               <InputNumber<number> controls={false} />
             </Form.Item>

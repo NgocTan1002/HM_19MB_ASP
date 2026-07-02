@@ -10,7 +10,9 @@ import {
 } from 'react';
 import { calibrationApi, getErrorMessage } from '../../services/api';
 import type {
+  CalibrationMode,
   CalibrationResultRow,
+  CalibrationQuantity,
   UncertaintyInput,
   UncertaintyResult,
 } from '../../types/models';
@@ -44,9 +46,12 @@ interface CalibrationFormProps {
   sessionId: number;
   stt: number;
   giaTriDat: number;
+  quantity: CalibrationQuantity;
+  calibrationMode: CalibrationMode;
   initialRow?: CalibrationResultRow | null;
   onSaved: (row: CalibrationResultRow) => void;
   onCancel: () => void;
+  onCalibrationModeChange?: (mode: CalibrationMode) => void;
   onResultChange?: (result: UncertaintyResult | null) => void;
   onGiaTriDatChange?: (value: number) => void;
   onJChange?: (value: number) => void;
@@ -80,9 +85,12 @@ function CalibrationForm(
     sessionId,
     stt,
     giaTriDat,
+    quantity,
+    calibrationMode,
     initialRow = null,
     onSaved,
     onCancel,
+    onCalibrationModeChange,
     onResultChange,
     onGiaTriDatChange,
     onJChange,
@@ -475,8 +483,9 @@ function CalibrationForm(
     const row: CalibrationResultRow = {
       id: initialRow?.id,
       stt,
+      daiLuong: quantity,
       giaTriDat: headerValues.giaTriDat,
-      giaTriChiThi: headerValues.giaTriDat,
+      giaTriChiThi: ttn,
       kenh: channelCorrectedMeans,
       giaTriTrungBinh: tch,
       soHieuChinh: deltaT,
@@ -514,6 +523,7 @@ function CalibrationForm(
     n,
     onSaved,
     result,
+    quantity,
     stt,
     ttn1,
     ttn2,
@@ -528,8 +538,12 @@ function CalibrationForm(
         <CalibrationConfigForm
           form={form}
           initialValues={initialValues}
+          quantity={quantity}
+          calibrationMode={calibrationMode}
+          modeDisabled={onCalibrationModeChange === undefined}
           channelCount={j}
           corrections={corrections}
+          onCalibrationModeChange={onCalibrationModeChange ?? (() => undefined)}
           onValuesChange={handleValuesChange}
           onCorrectionChange={handleCorrectionChange}
         />

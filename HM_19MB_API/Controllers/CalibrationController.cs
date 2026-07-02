@@ -65,6 +65,9 @@ namespace HM_19MB_API.Controllers
             {
                 id = row.Id,
                 stt = row.STT,
+                daiLuong = row.DaiLuong,
+                unit = row.Unit,
+                tenDaiLuong = row.TenDaiLuong,
                 giaTriDat = ToJsonNumber(row.GiaTriDat),
                 giaTriChiThi = ToJsonNumber(row.GiaTriChiThi),
                 kenh = row.Kenh.Select(ToJsonNumber).ToArray(),
@@ -88,14 +91,25 @@ namespace HM_19MB_API.Controllers
         }
 
         [HttpDelete("results/{stt}")]
-        public async Task<IActionResult> DeleteResult(int sessionId, int stt)
+        public async Task<IActionResult> DeleteResult(
+            int sessionId,
+            int stt,
+            [FromQuery] string? daiLuong = null)
         {
+            var targetDaiLuong = string.IsNullOrWhiteSpace(daiLuong)
+                ? CalibrationResultRow.DaiLuongNhietDo
+                : daiLuong;
             var rows = await DatabaseService.LayKetQuaHieuChuanAsync(sessionId);
             var resultId = rows
-                .FirstOrDefault(row => row.STT == stt)
+                .FirstOrDefault(row =>
+                    row.STT == stt &&
+                    string.Equals(
+                        row.DaiLuong,
+                        targetDaiLuong,
+                        StringComparison.OrdinalIgnoreCase))
                 ?.Id;
 
-            await DatabaseService.XoaKetQuaHieuChuanAsync(sessionId, stt);
+            await DatabaseService.XoaKetQuaHieuChuanAsync(sessionId, stt, targetDaiLuong);
 
             _cache.Remove(CacheKeys.CalibrationResults(sessionId));
             _cache.Remove(CacheKeys.Sessions);

@@ -90,7 +90,8 @@ CREATE OR REPLACE FUNCTION fn_luu_ket_qua_hieu_chuan(
     -- Thông số mở rộng
     p_do_phan_giai          FLOAT,
     p_he_so_phan_giai       FLOAT,
-    p_thong_so_chuan_json   TEXT
+    p_thong_so_chuan_json   TEXT,
+    p_dai_luong             VARCHAR
 )
 RETURNS INT
 LANGUAGE plpgsql
@@ -107,7 +108,7 @@ BEGIN
         do_on_dinh, do_dong_deu, do_khong_dam_bao,
         uch, ubk,
         so_kenh, so_lan_do, phuong_phap_b,
-        do_phan_giai, he_so_phan_giai, thong_so_chuan_json
+        do_phan_giai, he_so_phan_giai, thong_so_chuan_json, dai_luong
     )
     VALUES (
         p_phien_id, p_stt,
@@ -118,9 +119,10 @@ BEGIN
         p_do_on_dinh, p_do_dong_deu, p_do_khong_dam_bao,
         p_uch, p_ubk,
         p_so_kenh, p_so_lan_do, p_phuong_phap_b,
-        p_do_phan_giai, p_he_so_phan_giai, p_thong_so_chuan_json
+        p_do_phan_giai, p_he_so_phan_giai, p_thong_so_chuan_json,
+        COALESCE(NULLIF(p_dai_luong, ''), 'NhietDo')
     )
-    ON CONFLICT (phien_id, stt) DO UPDATE SET
+    ON CONFLICT (phien_id, stt, dai_luong) DO UPDATE SET
         gia_tri_dat          = EXCLUDED.gia_tri_dat,
         gia_tri_chi_thi      = EXCLUDED.gia_tri_chi_thi,
         kenh_1               = EXCLUDED.kenh_1,
@@ -146,6 +148,7 @@ BEGIN
         do_phan_giai         = EXCLUDED.do_phan_giai,
         he_so_phan_giai      = EXCLUDED.he_so_phan_giai,
         thong_so_chuan_json  = EXCLUDED.thong_so_chuan_json,
+        dai_luong            = EXCLUDED.dai_luong,
         ngay_tao             = NOW()
     RETURNING id INTO v_id;
  
@@ -340,7 +343,8 @@ RETURNS TABLE (
     phuong_phap_b       VARCHAR,
     do_phan_giai        FLOAT,
     he_so_phan_giai     FLOAT,
-    thong_so_chuan_json TEXT
+    thong_so_chuan_json TEXT,
+    dai_luong           VARCHAR
 )
 LANGUAGE sql STABLE AS $$
     SELECT
@@ -352,10 +356,10 @@ LANGUAGE sql STABLE AS $$
         do_on_dinh, do_dong_deu, do_khong_dam_bao,
         uch, ubk,
         so_kenh, so_lan_do, phuong_phap_b,
-        do_phan_giai, he_so_phan_giai, thong_so_chuan_json
+        do_phan_giai, he_so_phan_giai, thong_so_chuan_json, dai_luong
     FROM ket_qua_hieu_chuan
     WHERE phien_id = p_phien_id
-    ORDER BY stt;
+    ORDER BY stt, dai_luong;
 $$;
 
 
@@ -363,22 +367,21 @@ $$;
 -- fn_xoa_ket_qua_hieu_chuan
 -- ----------------------------------------------------------------
 DROP FUNCTION IF EXISTS fn_xoa_ket_qua_hieu_chuan(INT, INT);
+DROP FUNCTION IF EXISTS fn_xoa_ket_qua_hieu_chuan(INT, INT, VARCHAR);
 
 CREATE OR REPLACE FUNCTION fn_xoa_ket_qua_hieu_chuan(
     p_phien_id  INT,
-    p_stt       INT
+    p_stt       INT,
+    p_dai_luong VARCHAR DEFAULT 'NhietDo'
 )
 RETURNS VOID
 LANGUAGE plpgsql
 AS $$
 BEGIN
     DELETE FROM ket_qua_hieu_chuan
-    WHERE phien_id = p_phien_id AND stt = p_stt;
-
-    -- Cập nhật lại stt cho các dòng phía sau để liên tục
-    UPDATE ket_qua_hieu_chuan
-    SET stt = stt - 1
-    WHERE phien_id = p_phien_id AND stt > p_stt;
+    WHERE phien_id = p_phien_id
+      AND stt = p_stt
+      AND dai_luong = COALESCE(NULLIF(p_dai_luong, ''), 'NhietDo');
 END;
 $$;
 
